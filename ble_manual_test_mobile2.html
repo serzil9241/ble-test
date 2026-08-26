@@ -98,7 +98,9 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
     padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
   }
-  #battText { font-size: 13px; color: var(--muted); }
+  #battTextWrap { display: flex; flex-direction: column; gap: 2px; }
+  #battText { font-size: 22px; font-weight: 600; color: var(--text); }
+  #battChargeText { font-size: 15px; font-weight: 600; color: var(--warn); }
   #battFill { transition: y 0.6s ease, height 0.6s ease, fill 0.4s ease; }
   #battBolt { animation: battPulse 1.4s ease-in-out infinite; }
   @keyframes battPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
@@ -142,13 +144,16 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 </header>
 
 <div id="battRow" title="Waiting for a battery status report...">
-  <svg id="battSvg" viewBox="0 0 54 128" width="54" height="128">
+  <svg id="battSvg" viewBox="0 0 54 128" width="38" height="90">
     <rect x="17" y="0" width="20" height="10" rx="3" fill="var(--border)"/>
     <rect x="2" y="8" width="50" height="118" rx="10" fill="none" stroke="var(--border)" stroke-width="5"/>
     <rect id="battFill" x="8" y="120" width="38" height="0" rx="6" fill="var(--muted)"/>
     <text id="battBolt" x="27" y="80" font-size="40" text-anchor="middle" fill="#ffe066" stroke="#00000066" stroke-width="0.8" style="display:none">&#9889;</text>
   </svg>
-  <span id="battText">no battery data yet</span>
+  <div id="battTextWrap">
+    <span id="battText">no battery data yet</span>
+    <span id="battChargeText" style="display:none">charging</span>
+  </div>
 </div>
 
 <div id="quickCmds">
@@ -187,6 +192,7 @@ const battRowEl = document.getElementById('battRow');
 const battFillEl = document.getElementById('battFill');
 const battBoltEl = document.getElementById('battBolt');
 const battTextEl = document.getElementById('battText');
+const battChargeTextEl = document.getElementById('battChargeText');
 
 // Remembers the last address actually sent via "change addr", so the next
 // prompt is pre-filled with lastChAddr + 1 instead of starting from scratch.
@@ -336,7 +342,8 @@ function updateBatteryWidget() {
   battFillEl.setAttribute('fill', color);
   battBoltEl.style.display = usbConnected ? '' : 'none';
   const voltStr = (battVoltage === null) ? '' : ` · ${battVoltage.toFixed(2)}V`;
-  battTextEl.textContent = `${battPercent}%${voltStr}${usbConnected ? ' · charging' : ''}`;
+  battTextEl.textContent = `${battPercent}%${voltStr}`;
+  battChargeTextEl.style.display = usbConnected ? '' : 'none';
   battRowEl.title = usbConnected ? 'USB connected' : 'USB not connected';
 }
 
