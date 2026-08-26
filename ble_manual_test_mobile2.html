@@ -99,7 +99,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
   }
   #battText { font-size: 13px; color: var(--muted); }
-  #battFill { transition: width 0.6s ease, fill 0.4s ease; }
+  #battFill { transition: y 0.6s ease, height 0.6s ease, fill 0.4s ease; }
   #battBolt { animation: battPulse 1.4s ease-in-out infinite; }
   @keyframes battPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
   #quickCmds {
@@ -142,11 +142,11 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 </header>
 
 <div id="battRow" title="Waiting for a battery status report...">
-  <svg id="battSvg" viewBox="0 0 46 24" width="40" height="21">
-    <rect x="1" y="1" width="40" height="22" rx="5" fill="none" stroke="var(--border)" stroke-width="2"/>
-    <rect id="battFill" x="4" y="4" width="0" height="16" rx="2" fill="var(--muted)"/>
-    <rect x="42" y="8" width="3" height="8" rx="1" fill="var(--border)"/>
-    <text id="battBolt" x="21" y="16.5" font-size="13" text-anchor="middle" fill="#12151b" style="display:none">&#9889;</text>
+  <svg id="battSvg" viewBox="0 0 54 128" width="54" height="128">
+    <rect x="17" y="0" width="20" height="10" rx="3" fill="var(--border)"/>
+    <rect x="2" y="8" width="50" height="118" rx="10" fill="none" stroke="var(--border)" stroke-width="5"/>
+    <rect id="battFill" x="8" y="120" width="38" height="0" rx="6" fill="var(--muted)"/>
+    <text id="battBolt" x="27" y="80" font-size="40" text-anchor="middle" fill="#ffe066" stroke="#00000066" stroke-width="0.8" style="display:none">&#9889;</text>
   </svg>
   <span id="battText">no battery data yet</span>
 </div>
@@ -306,8 +306,12 @@ function handleNotification(bytes) {
 // The two lines arrive as separate BLE notifications, so state is kept
 // across calls and the battery widget is redrawn after either one lands.
 const VBAT_RE = /Vbat\s*=\s*([\d.]+)\s*V.*?(\d{1,3})\s*%/;
-const BATT_STATUS_RE = /BATTERY Status\s*-\s*([A-Za-z ]+?)\s*\*/;
-let battPercent = null, battVoltage = null, battCharging = false;
+// Same USB-present threshold the firmware itself uses (USB_LOW_VOLTAGE =
+// 3.5*USB_VOLT1, Prog7000_App.c:2391) — below it usb_state is ST_CUT
+// (no USB), above it the module considers USB actually connected.
+const USB_RE = /5V_USB\s*=\s*([\d.]+)\s*V/;
+const USB_CONNECTED_THRESHOLD_V = 3.5;
+let battPercent = null, battVoltage = null, usbConnected = false;
 
 function tryParseBattery(text) {
   const vm = VBAT_RE.exec(text);
@@ -315,24 +319,25 @@ function tryParseBattery(text) {
     battVoltage = parseFloat(vm[1]);
     battPercent = Math.max(0, Math.min(100, parseInt(vm[2], 10)));
   }
-  const sm = BATT_STATUS_RE.exec(text);
-  if (sm) {
-    battCharging = /charging/i.test(sm[1]) && !/not connected|empty/i.test(sm[1]);
+  const um = USB_RE.exec(text);
+  if (um) {
+    usbConnected = parseFloat(um[1]) > USB_CONNECTED_THRESHOLD_V;
   }
-  if (vm || sm) updateBatteryWidget();
+  if (vm || um) updateBatteryWidget();
 }
 
 function updateBatteryWidget() {
-  const FILL_MAX_W = 32;
+  const FILL_MAX_H = 106, FILL_BOTTOM_Y = 120;
   if (battPercent === null) return;
-  const w = (battPercent / 100) * FILL_MAX_W;
-  battFillEl.setAttribute('width', w.toFixed(1));
+  const h = (battPercent / 100) * FILL_MAX_H;
+  battFillEl.setAttribute('height', h.toFixed(1));
+  battFillEl.setAttribute('y', (FILL_BOTTOM_Y - h).toFixed(1));
   const color = battPercent <= 20 ? 'var(--err)' : battPercent <= 50 ? 'var(--warn)' : 'var(--ok)';
   battFillEl.setAttribute('fill', color);
-  battBoltEl.style.display = battCharging ? '' : 'none';
+  battBoltEl.style.display = usbConnected ? '' : 'none';
   const voltStr = (battVoltage === null) ? '' : ` · ${battVoltage.toFixed(2)}V`;
-  battTextEl.textContent = `${battPercent}%${voltStr}${battCharging ? ' · charging' : ''}`;
-  battRowEl.title = battCharging ? 'Charging' : 'Not charging';
+  battTextEl.textContent = `${battPercent}%${voltStr}${usbConnected ? ' · charging' : ''}`;
+  battRowEl.title = usbConnected ? 'USB connected' : 'USB not connected';
 }
 
 // ---- Connect / disconnect ----
