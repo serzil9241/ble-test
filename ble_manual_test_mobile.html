@@ -89,6 +89,14 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   .line.rx { color: var(--text); }
   .line.sys { color: var(--muted); }
   .line.err { color: var(--err); }
+  #quickCmds {
+    display: flex; gap: 8px; padding: 8px 12px 0 12px; background: var(--panel);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  #quickCmds button {
+    flex: 0 0 auto; font-size: 13px; padding: 7px 12px; border-radius: 16px;
+    white-space: nowrap;
+  }
   footer {
     display: flex; gap: 8px; padding: 10px 12px; background: var(--panel);
     border-top: 1px solid var(--border); align-items: center;
@@ -112,6 +120,11 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 
 <div id="log"></div>
 
+<div id="quickCmds">
+  <button class="quickCmdBtn" data-cmd="get all devices" disabled>get all devices</button>
+  <button class="quickCmdBtn" data-cmd="run all devices" disabled>run all devices</button>
+  <button class="quickCmdBtn" data-cmd="stop" disabled>stop</button>
+</div>
 <footer>
   <input id="cmd" type="text" placeholder="e.g. get all devices" autocomplete="off" autocapitalize="off" disabled>
   <button id="sendBtn" class="primary" disabled>Send</button>
@@ -188,6 +201,7 @@ function setConnectedUI(connected) {
   disconnectBtn.disabled = !connected;
   keepaliveBtn.disabled = !connected;
   cmdEl.disabled = !connected;
+  document.querySelectorAll('.quickCmdBtn').forEach(btn => { btn.disabled = !connected; });
   sendBtn.disabled = !connected;
 }
 
@@ -315,6 +329,10 @@ sendBtn.addEventListener('click', () => {
 });
 cmdEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendBtn.click();
+});
+
+document.querySelectorAll('.quickCmdBtn').forEach(btn => {
+  btn.addEventListener('click', () => sendText(btn.dataset.cmd));
 });
 
 // ---- Keepalive ----
