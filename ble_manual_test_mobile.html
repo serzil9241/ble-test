@@ -1,0 +1,317 @@
+<!--
+ble_manual_test_mobile.html — Android/Chrome mobile equivalent of ble_manual_test3.py
+
+Same behavior as the Python script:
+  - Scans/connects to "QuecHCM511S" (service FFF0), subscribes to notifications
+    on FFF1, and prints whatever the device sends.
+  - Sends nothing on its own except an optional keepalive. You type a line and
+    press Send (or Enter) — that text is hex-ASCII-encoded (2 hex chars per
+    byte) before being written, because the firmware's FFF1 parser
+    (convert_ascii_to_hex in ble.c) requires that encoding on the wire.
+  - Keepalive: every 3s writes "Hello prog7000" (same hex-encoding, Write
+    Without Response) so you notice a dead link within one interval instead
+    of only when you next type something. Pause/Resume button toggles it
+    without disconnecting — handy for watching the firmware's own 10s
+    BLE-watchdog fire on purpose (main.c:501).
+
+Requirements:
+  - Chrome (or another Chromium browser) on Android. Web Bluetooth does NOT
+    work in Safari/iOS — there is no iOS equivalent of this file.
+  - A "secure context": either serve this file over HTTPS, or use the
+    adb-reverse trick below to make it load as http://localhost on the phone
+    (Chrome treats localhost as secure even over plain HTTP).
+
+Quick way to run it (no certificates needed):
+  1. On the PC, in the folder containing this file:
+       python -m http.server 8000
+  2. Connect the phone via USB with USB debugging on, then on the PC:
+       adb reverse tcp:8000 tcp:8000
+  3. On the phone, open Chrome and go to:
+       http://localhost:8000/ble_manual_test_mobile.html
+  4. Tap "Connect", pick "QuecHCM511S" from the browser's device picker.
+
+(A plain http:// page served from the PC's LAN IP, e.g. http://192.168.x.x:8000/...,
+will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BLE Manual Test (Mobile)</title>
+<style>
+  :root {
+    --bg: #111318;
+    --panel: #1b1f27;
+    --border: #2c313c;
+    --text: #e6e8ec;
+    --muted: #8a90a0;
+    --accent: #4da6ff;
+    --ok: #3ecf6f;
+    --err: #ff5f56;
+    --warn: #ffb84d;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Roboto, "Segoe UI", sans-serif;
+  }
+  body { display: flex; flex-direction: column; height: 100vh; }
+  header {
+    padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; margin: 0; flex: 1 1 auto; font-weight: 600; }
+  #status { font-size: 13px; padding: 3px 9px; border-radius: 12px; background: #2a2e37; color: var(--muted); }
+  #status.connected { background: rgba(62,207,111,0.15); color: var(--ok); }
+  #status.error { background: rgba(255,95,86,0.15); color: var(--err); }
+  button {
+    font-size: 14px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+    background: #262b35; color: var(--text); cursor: pointer;
+  }
+  button:active { background: #2f3542; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary { background: var(--accent); color: #06131f; border-color: var(--accent); font-weight: 600; }
+  #log {
+    flex: 1 1 auto; overflow-y: auto; padding: 10px 12px; font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 13px; white-space: pre-wrap; word-break: break-word; line-height: 1.5;
+  }
+  .line { margin: 0 0 2px 0; }
+  .line.tx { color: var(--accent); }
+  .line.rx { color: var(--text); }
+  .line.sys { color: var(--muted); }
+  .line.err { color: var(--err); }
+  footer {
+    display: flex; gap: 8px; padding: 10px 12px; background: var(--panel);
+    border-top: 1px solid var(--border); align-items: center;
+  }
+  #cmd {
+    flex: 1 1 auto; font-size: 15px; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: #12151b; color: var(--text);
+  }
+  #keepaliveBtn.paused { color: var(--warn); border-color: var(--warn); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BLE Manual Test — Mobile</h1>
+  <span id="status">disconnected</span>
+  <button id="connectBtn" class="primary">Connect</button>
+  <button id="disconnectBtn" disabled>Disconnect</button>
+  <button id="keepaliveBtn" disabled>Keepalive: on</button>
+</header>
+
+<div id="log"></div>
+
+<footer>
+  <input id="cmd" type="text" placeholder="e.g. get all devices" autocomplete="off" autocapitalize="off" disabled>
+  <button id="sendBtn" class="primary" disabled>Send</button>
+</footer>
+
+<script>
+const DEVICE_NAME_PREFIX = "QuecHCM511S";
+const SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb";
+const CHAR_UUID    = "0000fff1-0000-1000-8000-00805f9b34fb";
+const KEEPALIVE_TEXT = "Hello prog7000";
+const KEEPALIVE_INTERVAL_MS = 3000;
+
+let device = null, server = null, characteristic = null;
+let keepaliveTimer = null, keepaliveEnabled = true;
+
+const logEl = document.getElementById('log');
+const statusEl = document.getElementById('status');
+const connectBtn = document.getElementById('connectBtn');
+const disconnectBtn = document.getElementById('disconnectBtn');
+const keepaliveBtn = document.getElementById('keepaliveBtn');
+const cmdEl = document.getElementById('cmd');
+const sendBtn = document.getElementById('sendBtn');
+
+function log(text, cls) {
+  const div = document.createElement('div');
+  div.className = 'line ' + (cls || 'sys');
+  div.textContent = text;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setConnectedUI(connected) {
+  statusEl.textContent = connected ? 'connected' : 'disconnected';
+  statusEl.className = connected ? 'connected' : '';
+  connectBtn.disabled = connected;
+  disconnectBtn.disabled = !connected;
+  keepaliveBtn.disabled = !connected;
+  cmdEl.disabled = !connected;
+  sendBtn.disabled = !connected;
+}
+
+// ---- ASCII-hex encode/decode (mirrors ble_manual_test3.py) ----
+
+function textToHexAsciiPayload(text) {
+  // Drop non-ASCII chars, like Python's .encode('ascii', errors='ignore')
+  const asciiOnly = Array.from(text).filter(ch => ch.charCodeAt(0) < 128).join('');
+  const bytes = new TextEncoder().encode(asciiOnly);
+  let hex = '';
+  for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+  hex = hex.toUpperCase();
+  return { hex, payload: new TextEncoder().encode(hex) };
+}
+
+function isHexString(s) {
+  return s.length > 0 && s.length % 2 === 0 && /^[0-9A-Fa-f]+$/.test(s);
+}
+
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) out[i / 2] = parseInt(hex.substr(i, 2), 16);
+  return out;
+}
+
+function handleNotification(bytes) {
+  let asciiStr = '';
+  try {
+    asciiStr = Array.from(bytes).map(b => String.fromCharCode(b)).join('').trim();
+  } catch (e) { /* fall through */ }
+
+  let decoded;
+  if (isHexString(asciiStr)) {
+    decoded = hexToBytes(asciiStr);
+  } else {
+    decoded = bytes;
+  }
+
+  if (decoded.length === 1) {
+    log(`single byte: 0x${decoded[0].toString(16).toUpperCase().padStart(2, '0')}`, 'rx');
+    return;
+  }
+
+  let text;
+  try {
+    text = new TextDecoder('utf-8', { fatal: false }).decode(decoded);
+  } catch (e) {
+    text = Array.from(decoded).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  }
+  log(text, 'rx');
+}
+
+// ---- Connect / disconnect ----
+
+async function connect() {
+  if (!navigator.bluetooth) {
+    log('Web Bluetooth is not available in this browser (need Chrome on Android).', 'err');
+    return;
+  }
+  try {
+    log(`Requesting device "${DEVICE_NAME_PREFIX}"...`, 'sys');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
+      optionalServices: [SERVICE_UUID]
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+
+    log(`Connecting to ${device.name || device.id}...`, 'sys');
+    server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    characteristic = await service.getCharacteristic(CHAR_UUID);
+
+    await characteristic.startNotifications();
+    characteristic.addEventListener('characteristicvaluechanged', (event) => {
+      handleNotification(new Uint8Array(event.target.value.buffer));
+    });
+
+    log('Connected.', 'sys');
+    setConnectedUI(true);
+    startKeepalive();
+  } catch (err) {
+    log(`Connect failed: ${err}`, 'err');
+    setConnectedUI(false);
+  }
+}
+
+function onDisconnected() {
+  log('Disconnected.', 'sys');
+  stopKeepaliveTimer();
+  characteristic = null;
+  server = null;
+  setConnectedUI(false);
+}
+
+function disconnect() {
+  if (device && device.gatt.connected) {
+    device.gatt.disconnect(); // triggers onDisconnected via the event listener
+  } else {
+    onDisconnected();
+  }
+}
+
+// ---- Send ----
+
+async function sendText(text) {
+  if (!characteristic) return;
+  const { hex, payload } = textToHexAsciiPayload(text);
+  try {
+    if (characteristic.writeValueWithoutResponse) {
+      await characteristic.writeValueWithoutResponse(payload);
+    } else {
+      await characteristic.writeValue(payload); // older Chrome fallback
+    }
+    log(`Sent: ${text}  (wire: ${hex})`, 'tx');
+  } catch (err) {
+    log(`Write failed: ${err}`, 'err');
+  }
+}
+
+sendBtn.addEventListener('click', () => {
+  const text = cmdEl.value;
+  if (text.trim() === '') return;
+  sendText(text);
+  cmdEl.value = '';
+});
+cmdEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendBtn.click();
+});
+
+// ---- Keepalive ----
+
+function startKeepalive() {
+  keepaliveEnabled = true;
+  keepaliveBtn.textContent = 'Keepalive: on';
+  keepaliveBtn.classList.remove('paused');
+  stopKeepaliveTimer();
+  keepaliveTimer = setInterval(async () => {
+    if (!keepaliveEnabled || !characteristic) return;
+    const { payload } = textToHexAsciiPayload(KEEPALIVE_TEXT);
+    try {
+      if (characteristic.writeValueWithoutResponse) {
+        await characteristic.writeValueWithoutResponse(payload);
+      } else {
+        await characteristic.writeValue(payload);
+      }
+    } catch (err) {
+      log(`[Keepalive] write failed — link is down: ${err}`, 'err');
+    }
+  }, KEEPALIVE_INTERVAL_MS);
+}
+
+function stopKeepaliveTimer() {
+  if (keepaliveTimer) {
+    clearInterval(keepaliveTimer);
+    keepaliveTimer = null;
+  }
+}
+
+keepaliveBtn.addEventListener('click', () => {
+  keepaliveEnabled = !keepaliveEnabled;
+  keepaliveBtn.textContent = keepaliveEnabled ? 'Keepalive: on' : 'Keepalive: paused';
+  keepaliveBtn.classList.toggle('paused', !keepaliveEnabled);
+  log(keepaliveEnabled ? '[Keepalive] resumed' : '[Keepalive] paused', 'sys');
+});
+
+connectBtn.addEventListener('click', connect);
+disconnectBtn.addEventListener('click', disconnect);
+
+setConnectedUI(false);
+log('Tap "Connect" to scan for QuecHCM511S.', 'sys');
+</script>
+</body>
+</html>
