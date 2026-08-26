@@ -94,6 +94,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   .line.rx { color: var(--text); }
   .line.sys { color: var(--muted); }
   .line.err { color: var(--err); }
+  .line.warn { color: var(--warn); }
   #battRow {
     flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
     padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
@@ -178,6 +179,34 @@ const KEEPALIVE_TEXT = "Hello prog7000";
 const KEEPALIVE_INTERVAL_MS = 3000;
 
 let device = null, server = null, characteristic = null;
+let wakeLock = null;
+
+// Keeps the screen from auto-dimming/locking due to idle timeout while
+// connected, so mobile Chrome never freezes this tab's timers and the
+// keepalive keeps reaching the firmware's 10s BLE-watchdog (main.c:501).
+// Note: this only stops the OS's own idle timeout — it cannot stop the
+// screen turning off if the power button is pressed deliberately; in that
+// case there is no web-page-level fix, the link will drop like before.
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) {
+    log("This browser doesn't support Screen Wake Lock — the screen turning off (even just from idle timeout) may still drop the connection.", 'warn');
+    return;
+  }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    log('[Wake Lock] screen will stay on while connected.', 'sys');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (err) {
+    log(`[Wake Lock] request failed: ${err}`, 'warn');
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) {
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
+}
 let keepaliveTimer = null, keepaliveEnabled = true;
 
 const logEl = document.getElementById('log');
@@ -376,6 +405,7 @@ async function connect() {
     log('Connected.', 'sys');
     setConnectedUI(true);
     startKeepalive();
+    acquireWakeLock();
   } catch (err) {
     log(`Connect failed: ${err}`, 'err');
     setConnectedUI(false);
@@ -385,6 +415,7 @@ async function connect() {
 function onDisconnected() {
   log('Disconnected.', 'sys');
   stopKeepaliveTimer();
+  releaseWakeLock();
   characteristic = null;
   server = null;
   setConnectedUI(false);
@@ -511,6 +542,22 @@ keepaliveBtn.addEventListener('click', () => {
 
 connectBtn.addEventListener('click', connect);
 disconnectBtn.addEventListener('click', disconnect);
+
+// While the screen is off / the tab is backgrounded, mobile Chrome freezes
+// timers — the keepalive interval doesn't run at all, so a link that dies
+// during that time goes unnoticed until the next scheduled tick fires
+// (which can lag well past KEEPALIVE_INTERVAL_MS once resumed). Force an
+// immediate write the moment the page becomes visible again instead of
+// waiting for that tick, so the status badge catches up right away.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !characteristic) return;
+  if (!wakeLock) acquireWakeLock(); // the lock is auto-released whenever the tab was hidden
+  const { payload } = textToHexAsciiPayload(KEEPALIVE_TEXT);
+  queueGattWrite(payload).catch((err) => {
+    log(`[Keepalive] write failed after resume — link is down: ${err}`, 'err');
+    onDisconnected();
+  });
+});
 
 setConnectedUI(false);
 log('Tap "Connect" to scan for PROG7000.', 'sys');
