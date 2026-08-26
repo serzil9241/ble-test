@@ -90,13 +90,17 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   .line.sys { color: var(--muted); }
   .line.err { color: var(--err); }
   #quickCmds {
-    display: flex; gap: 8px; padding: 8px 12px 0 12px; background: var(--panel);
+    display: flex; gap: 10px; padding: 10px 12px; background: var(--panel);
+    border-bottom: 1px solid var(--border);
     overflow-x: auto; -webkit-overflow-scrolling: touch;
   }
   #quickCmds button {
-    flex: 0 0 auto; font-size: 13px; padding: 7px 12px; border-radius: 16px;
-    white-space: nowrap;
+    flex: 0 0 auto; font-size: 14px; font-weight: 600; padding: 10px 16px;
+    border-radius: 20px; white-space: nowrap;
+    background: rgba(77,166,255,0.15); border: 1.5px solid var(--accent); color: var(--accent);
   }
+  #quickCmds button:active { background: rgba(77,166,255,0.3); }
+  #quickCmds button:disabled { background: transparent; border-color: var(--border); color: var(--muted); opacity: 1; }
   footer {
     display: flex; gap: 8px; padding: 10px 12px; background: var(--panel);
     border-top: 1px solid var(--border); align-items: center;
@@ -118,13 +122,14 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <button id="keepaliveBtn" disabled>Keepalive: on</button>
 </header>
 
-<div id="log"></div>
-
 <div id="quickCmds">
   <button class="quickCmdBtn" data-cmd="get all devices" disabled>get all devices</button>
   <button class="quickCmdBtn" data-cmd="run all devices" disabled>run all devices</button>
   <button class="quickCmdBtn" data-cmd="stop" disabled>stop</button>
 </div>
+
+<div id="log"></div>
+
 <footer>
   <input id="cmd" type="text" placeholder="e.g. get all devices" autocomplete="off" autocapitalize="off" disabled>
   <button id="sendBtn" class="primary" disabled>Send</button>
