@@ -1,0 +1,499 @@
+<!--
+ble_manual_test_mobile2.html — Android/Chrome mobile equivalent of ble_manual_test3.py
+(v2 — ble_manual_test_mobile.html is left as-is from here on; further changes
+land in new, incrementally-numbered copies instead of editing in place.)
+
+Same behavior as the Python script:
+  - Scans/connects to "PROG7000" (service FFF0), subscribes to notifications
+    on FFF1, and prints whatever the device sends.
+  - Sends nothing on its own except an optional keepalive. You type a line and
+    press Send (or Enter) — that text is hex-ASCII-encoded (2 hex chars per
+    byte) before being written, because the firmware's FFF1 parser
+    (convert_ascii_to_hex in ble.c) requires that encoding on the wire.
+  - Keepalive: every 3s writes "Hello prog7000" (same hex-encoding, Write
+    Without Response) so you notice a dead link within one interval instead
+    of only when you next type something. Pause/Resume button toggles it
+    without disconnecting — handy for watching the firmware's own 10s
+    BLE-watchdog fire on purpose (main.c:501).
+
+Requirements:
+  - Chrome (or another Chromium browser) on Android. Web Bluetooth does NOT
+    work in Safari/iOS — there is no iOS equivalent of this file.
+  - A "secure context": either serve this file over HTTPS, or use the
+    adb-reverse trick below to make it load as http://localhost on the phone
+    (Chrome treats localhost as secure even over plain HTTP).
+
+Quick way to run it (no certificates needed):
+  1. On the PC, in the folder containing this file:
+       python -m http.server 8000
+  2. Connect the phone via USB with USB debugging on, then on the PC:
+       adb reverse tcp:8000 tcp:8000
+  3. On the phone, open Chrome and go to:
+       http://localhost:8000/ble_manual_test_mobile.html
+  4. Tap "Connect", pick "PROG7000" from the browser's device picker.
+
+(A plain http:// page served from the PC's LAN IP, e.g. http://192.168.x.x:8000/...,
+will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BLE Manual Test (Mobile)</title>
+<style>
+  :root {
+    --bg: #111318;
+    --panel: #1b1f27;
+    --border: #2c313c;
+    --text: #e6e8ec;
+    --muted: #8a90a0;
+    --accent: #4da6ff;
+    --ok: #3ecf6f;
+    --err: #ff5f56;
+    --warn: #ffb84d;
+    --ansi-blue: #4da6ff;
+    --ansi-cyan: #4dd0e1;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Roboto, "Segoe UI", sans-serif;
+  }
+  body {
+    display: flex; flex-direction: column;
+    height: 100vh;   /* fallback for browsers without dvh */
+    height: 100dvh;  /* actual visible viewport on mobile Chrome — accounts for the address bar,
+                         so the footer (input box) is never pushed off-screen below the fold */
+    overflow: hidden; /* the page itself never scrolls — only #log does */
+  }
+  header {
+    flex: 0 0 auto; /* never shrink — only #log should give up space */
+    padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; margin: 0; flex: 1 1 auto; font-weight: 600; }
+  #status { font-size: 13px; padding: 3px 9px; border-radius: 12px; background: #2a2e37; color: var(--muted); }
+  #status.connected { background: rgba(62,207,111,0.15); color: var(--ok); }
+  #status.error { background: rgba(255,95,86,0.15); color: var(--err); }
+  button {
+    font-size: 14px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+    background: #262b35; color: var(--text); cursor: pointer;
+  }
+  button:active { background: #2f3542; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary { background: var(--accent); color: #06131f; border-color: var(--accent); font-weight: 600; }
+  #log {
+    flex: 1 1 auto; min-height: 0; /* let this shrink instead of pushing header/buttons/footer
+                                       out of view when the on-screen keyboard shrinks the viewport */
+    overflow-y: auto; padding: 10px 12px; font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 13px; white-space: pre-wrap; word-break: break-word; line-height: 1.5;
+  }
+  .line { margin: 0 0 2px 0; }
+  .line.tx { color: var(--accent); }
+  .line.rx { color: var(--text); }
+  .line.sys { color: var(--muted); }
+  .line.err { color: var(--err); }
+  #battRow {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  #battText { font-size: 13px; color: var(--muted); }
+  #battFill { transition: width 0.6s ease, fill 0.4s ease; }
+  #battBolt { animation: battPulse 1.4s ease-in-out infinite; }
+  @keyframes battPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  #quickCmds {
+    flex: 0 0 auto; /* never shrink — only #log should give up space */
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    /* overflow-y must be set explicitly to "visible" here — leaving it unset
+       while overflow-x is "auto" makes the browser silently force overflow-y
+       to "auto" too (per the CSS overflow spec), turning this row into its
+       own vertical scroll/clip box and cropping the buttons. */
+    overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch;
+  }
+  #quickCmds button {
+    flex: 0 0 auto; font-size: 14px; font-weight: 600; padding: 10px 16px; line-height: 1.2;
+    border-radius: 20px; white-space: nowrap;
+    background: rgba(77,166,255,0.15); border: 1.5px solid var(--accent); color: var(--accent);
+  }
+  #quickCmds button:active { background: rgba(77,166,255,0.3); }
+  #quickCmds button:disabled { background: transparent; border-color: var(--border); color: var(--muted); opacity: 1; }
+  footer {
+    flex: 0 0 auto; /* never shrink — only #log should give up space */
+    display: flex; gap: 8px; padding: 10px 12px; background: var(--panel);
+    border-top: 1px solid var(--border); align-items: center;
+  }
+  #cmd {
+    flex: 1 1 auto; font-size: 15px; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: #12151b; color: var(--text);
+  }
+  #keepaliveBtn.paused { color: var(--warn); border-color: var(--warn); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BLE Manual Test — Mobile</h1>
+  <span id="status">disconnected</span>
+  <button id="connectBtn" class="primary">Connect</button>
+  <button id="disconnectBtn" disabled>Disconnect</button>
+  <button id="keepaliveBtn" disabled>Keepalive: on</button>
+</header>
+
+<div id="battRow" title="Waiting for a battery status report...">
+  <svg id="battSvg" viewBox="0 0 46 24" width="40" height="21">
+    <rect x="1" y="1" width="40" height="22" rx="5" fill="none" stroke="var(--border)" stroke-width="2"/>
+    <rect id="battFill" x="4" y="4" width="0" height="16" rx="2" fill="var(--muted)"/>
+    <rect x="42" y="8" width="3" height="8" rx="1" fill="var(--border)"/>
+    <text id="battBolt" x="21" y="16.5" font-size="13" text-anchor="middle" fill="#12151b" style="display:none">&#9889;</text>
+  </svg>
+  <span id="battText">no battery data yet</span>
+</div>
+
+<div id="quickCmds">
+  <button class="quickCmdBtn" data-cmd="get all devices" disabled>get all devices</button>
+  <button class="quickCmdBtn" data-cmd="run all devices" disabled>run all devices</button>
+  <button class="quickCmdBtn" data-cmd="stop" disabled>stop</button>
+  <button id="chAddrBtn" class="quickCmdBtn" disabled>change addr</button>
+</div>
+
+<div id="log"></div>
+
+<footer>
+  <input id="cmd" type="text" placeholder="e.g. get all devices" autocomplete="off" autocapitalize="off" disabled>
+  <button id="sendBtn" class="primary" disabled>Send</button>
+</footer>
+
+<script>
+const DEVICE_NAME_PREFIX = "PROG7000";
+const SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb";
+const CHAR_UUID    = "0000fff1-0000-1000-8000-00805f9b34fb";
+const KEEPALIVE_TEXT = "Hello prog7000";
+const KEEPALIVE_INTERVAL_MS = 3000;
+
+let device = null, server = null, characteristic = null;
+let keepaliveTimer = null, keepaliveEnabled = true;
+
+const logEl = document.getElementById('log');
+const statusEl = document.getElementById('status');
+const connectBtn = document.getElementById('connectBtn');
+const disconnectBtn = document.getElementById('disconnectBtn');
+const keepaliveBtn = document.getElementById('keepaliveBtn');
+const cmdEl = document.getElementById('cmd');
+const sendBtn = document.getElementById('sendBtn');
+const chAddrBtn = document.getElementById('chAddrBtn');
+const battRowEl = document.getElementById('battRow');
+const battFillEl = document.getElementById('battFill');
+const battBoltEl = document.getElementById('battBolt');
+const battTextEl = document.getElementById('battText');
+
+// Remembers the last address actually sent via "change addr", so the next
+// prompt is pre-filled with lastChAddr + 1 instead of starting from scratch.
+let lastChAddr = null;
+
+// Firmware status reports embed ANSI color codes (ANSI_RED/GREEN/YELLOW/...,
+// see main.h) via ble_report_line() — e.g. "\x1B[31m...\x1B[0m" for a red
+// line. textContent alone renders those escape bytes as invisible control
+// characters, which is why the color silently disappeared on mobile (the
+// PC-side test scripts show it because prompt_toolkit's ANSI() interprets
+// the same codes). This converts them into colored <span>s instead.
+const ANSI_COLOR_MAP = {
+  '30': 'var(--muted)',
+  '31': 'var(--err)',      // ANSI_RED
+  '32': 'var(--ok)',       // ANSI_GREEN
+  '33': 'var(--warn)',     // ANSI_YELLOW
+  '34': 'var(--ansi-blue)',// ANSI_BLUE
+  '36': 'var(--ansi-cyan)' // ANSI_CYAN
+  // '0' (ANSI_RESET) is handled separately below — it closes the span.
+};
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function ansiToHtml(text) {
+  const re = /\x1B\[(\d+)m/g;
+  let html = '', lastIndex = 0, openSpan = false, match;
+  while ((match = re.exec(text)) !== null) {
+    html += escapeHtml(text.slice(lastIndex, match.index));
+    lastIndex = re.lastIndex;
+    if (openSpan) { html += '</span>'; openSpan = false; }
+    const color = ANSI_COLOR_MAP[match[1]];
+    if (color) {
+      html += `<span style="color:${color}">`;
+      openSpan = true;
+    }
+  }
+  html += escapeHtml(text.slice(lastIndex));
+  if (openSpan) html += '</span>';
+  return html;
+}
+
+function log(text, cls) {
+  const div = document.createElement('div');
+  div.className = 'line ' + (cls || 'sys');
+  div.innerHTML = ansiToHtml(text);
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setConnectedUI(connected) {
+  statusEl.textContent = connected ? 'connected' : 'disconnected';
+  statusEl.className = connected ? 'connected' : '';
+  connectBtn.disabled = connected;
+  disconnectBtn.disabled = !connected;
+  keepaliveBtn.disabled = !connected;
+  cmdEl.disabled = !connected;
+  document.querySelectorAll('.quickCmdBtn').forEach(btn => { btn.disabled = !connected; });
+  sendBtn.disabled = !connected;
+}
+
+// ---- ASCII-hex encode/decode (mirrors ble_manual_test3.py) ----
+
+function textToHexAsciiPayload(text) {
+  // Drop non-ASCII chars, like Python's .encode('ascii', errors='ignore')
+  const asciiOnly = Array.from(text).filter(ch => ch.charCodeAt(0) < 128).join('');
+  const bytes = new TextEncoder().encode(asciiOnly);
+  let hex = '';
+  for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+  hex = hex.toUpperCase();
+  return { hex, payload: new TextEncoder().encode(hex) };
+}
+
+function isHexString(s) {
+  return s.length > 0 && s.length % 2 === 0 && /^[0-9A-Fa-f]+$/.test(s);
+}
+
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) out[i / 2] = parseInt(hex.substr(i, 2), 16);
+  return out;
+}
+
+function handleNotification(bytes) {
+  let asciiStr = '';
+  try {
+    asciiStr = Array.from(bytes).map(b => String.fromCharCode(b)).join('').trim();
+  } catch (e) { /* fall through */ }
+
+  let decoded;
+  if (isHexString(asciiStr)) {
+    decoded = hexToBytes(asciiStr);
+  } else {
+    decoded = bytes;
+  }
+
+  if (decoded.length === 1) {
+    log(`single byte: 0x${decoded[0].toString(16).toUpperCase().padStart(2, '0')}`, 'rx');
+    return;
+  }
+
+  let text;
+  try {
+    text = new TextDecoder('utf-8', { fatal: false }).decode(decoded);
+  } catch (e) {
+    text = Array.from(decoded).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  }
+  log(text, 'rx');
+  tryParseBattery(text);
+}
+
+// Fished out of the firmware's own periodic status report
+// (ble_send_and_debug_print() in Prog7000_App.c), e.g.:
+//   "Vbat = 4.11 V  (2775)   100%"
+//   "*****  BATTERY Status - FULL Charging  *****" (ANSI-colored)
+// The two lines arrive as separate BLE notifications, so state is kept
+// across calls and the battery widget is redrawn after either one lands.
+const VBAT_RE = /Vbat\s*=\s*([\d.]+)\s*V.*?(\d{1,3})\s*%/;
+const BATT_STATUS_RE = /BATTERY Status\s*-\s*([A-Za-z ]+?)\s*\*/;
+let battPercent = null, battVoltage = null, battCharging = false;
+
+function tryParseBattery(text) {
+  const vm = VBAT_RE.exec(text);
+  if (vm) {
+    battVoltage = parseFloat(vm[1]);
+    battPercent = Math.max(0, Math.min(100, parseInt(vm[2], 10)));
+  }
+  const sm = BATT_STATUS_RE.exec(text);
+  if (sm) {
+    battCharging = /charging/i.test(sm[1]) && !/not connected|empty/i.test(sm[1]);
+  }
+  if (vm || sm) updateBatteryWidget();
+}
+
+function updateBatteryWidget() {
+  const FILL_MAX_W = 32;
+  if (battPercent === null) return;
+  const w = (battPercent / 100) * FILL_MAX_W;
+  battFillEl.setAttribute('width', w.toFixed(1));
+  const color = battPercent <= 20 ? 'var(--err)' : battPercent <= 50 ? 'var(--warn)' : 'var(--ok)';
+  battFillEl.setAttribute('fill', color);
+  battBoltEl.style.display = battCharging ? '' : 'none';
+  const voltStr = (battVoltage === null) ? '' : ` · ${battVoltage.toFixed(2)}V`;
+  battTextEl.textContent = `${battPercent}%${voltStr}${battCharging ? ' · charging' : ''}`;
+  battRowEl.title = battCharging ? 'Charging' : 'Not charging';
+}
+
+// ---- Connect / disconnect ----
+
+async function connect() {
+  if (!navigator.bluetooth) {
+    log('Web Bluetooth is not available in this browser (need Chrome on Android).', 'err');
+    return;
+  }
+  writeChain = Promise.resolve(); // fresh write queue for this connection
+  try {
+    log(`Requesting device "${DEVICE_NAME_PREFIX}"...`, 'sys');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
+      optionalServices: [SERVICE_UUID]
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+
+    log(`Connecting to ${device.name || device.id}...`, 'sys');
+    server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    characteristic = await service.getCharacteristic(CHAR_UUID);
+
+    await characteristic.startNotifications();
+    characteristic.addEventListener('characteristicvaluechanged', (event) => {
+      handleNotification(new Uint8Array(event.target.value.buffer));
+    });
+
+    log('Connected.', 'sys');
+    setConnectedUI(true);
+    startKeepalive();
+  } catch (err) {
+    log(`Connect failed: ${err}`, 'err');
+    setConnectedUI(false);
+  }
+}
+
+function onDisconnected() {
+  log('Disconnected.', 'sys');
+  stopKeepaliveTimer();
+  characteristic = null;
+  server = null;
+  setConnectedUI(false);
+}
+
+function disconnect() {
+  if (device && device.gatt.connected) {
+    device.gatt.disconnect(); // triggers onDisconnected via the event listener
+  } else {
+    onDisconnected();
+  }
+}
+
+// ---- Send ----
+
+// Web Bluetooth refuses a second GATT operation while one is still in
+// flight — it throws "GATT operation already in progress" instead of
+// queueing it. The keepalive timer (every 3s) and manual sends (button/
+// quick-command) both write to the same characteristic independently, so
+// without this queue they could collide and the keepalive write would
+// spuriously fail right when you send a command (or vice versa). Every
+// write below is chained onto this promise instead of firing directly,
+// so the actual GATT call always waits for the previous one to finish.
+let writeChain = Promise.resolve();
+
+function queueGattWrite(payload) {
+  const result = writeChain.then(() => {
+    if (characteristic.writeValueWithoutResponse) {
+      return characteristic.writeValueWithoutResponse(payload);
+    }
+    return characteristic.writeValue(payload); // older Chrome fallback
+  });
+  // Swallow here so one failed write doesn't wedge the chain for everyone
+  // after it — callers still see the real error via the returned promise.
+  writeChain = result.catch(() => {});
+  return result;
+}
+
+async function sendText(text) {
+  if (!characteristic) return;
+  const { hex, payload } = textToHexAsciiPayload(text);
+  try {
+    await queueGattWrite(payload);
+    log(`Sent: ${text}  (wire: ${hex})`, 'tx');
+  } catch (err) {
+    log(`Write failed: ${err}`, 'err');
+  }
+}
+
+sendBtn.addEventListener('click', () => {
+  const text = cmdEl.value;
+  if (text.trim() === '') return;
+  sendText(text);
+  cmdEl.value = '';
+});
+cmdEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendBtn.click();
+});
+
+document.querySelectorAll('.quickCmdBtn').forEach(btn => {
+  if (btn.dataset.cmd) btn.addEventListener('click', () => sendText(btn.dataset.cmd));
+});
+
+// "change addr" — firmware's CommandParser expects "ch addr" directly
+// followed by 1-3 decimal digits, e.g. "ch addr5" or "ch addr123"
+// (see parse_decimal() call in Prog7000_App.c). Each tap opens a prompt
+// pre-filled with (last address actually sent) + 1, so repeatedly tapping
+// "OK" walks the address up by one each time; the value can still be
+// edited freely before sending.
+chAddrBtn.addEventListener('click', () => {
+  const defaultVal = (lastChAddr === null) ? '1' : String(lastChAddr + 1);
+  const input = window.prompt('New address (1-3 digits):', defaultVal);
+  if (input === null) return; // cancelled
+
+  const trimmed = input.trim();
+  if (!/^\d{1,3}$/.test(trimmed)) {
+    log(`"${input}" is not 1-3 digits — not sent.`, 'err');
+    return;
+  }
+
+  lastChAddr = parseInt(trimmed, 10);
+  sendText('ch addr' + trimmed);
+});
+
+// ---- Keepalive ----
+
+function startKeepalive() {
+  keepaliveEnabled = true;
+  keepaliveBtn.textContent = 'Keepalive: on';
+  keepaliveBtn.classList.remove('paused');
+  stopKeepaliveTimer();
+  keepaliveTimer = setInterval(async () => {
+    if (!keepaliveEnabled || !characteristic) return;
+    const { payload } = textToHexAsciiPayload(KEEPALIVE_TEXT);
+    try {
+      await queueGattWrite(payload);
+    } catch (err) {
+      log(`[Keepalive] write failed — link is down: ${err}`, 'err');
+    }
+  }, KEEPALIVE_INTERVAL_MS);
+}
+
+function stopKeepaliveTimer() {
+  if (keepaliveTimer) {
+    clearInterval(keepaliveTimer);
+    keepaliveTimer = null;
+  }
+}
+
+keepaliveBtn.addEventListener('click', () => {
+  keepaliveEnabled = !keepaliveEnabled;
+  keepaliveBtn.textContent = keepaliveEnabled ? 'Keepalive: on' : 'Keepalive: paused';
+  keepaliveBtn.classList.toggle('paused', !keepaliveEnabled);
+  log(keepaliveEnabled ? '[Keepalive] resumed' : '[Keepalive] paused', 'sys');
+});
+
+connectBtn.addEventListener('click', connect);
+disconnectBtn.addEventListener('click', disconnect);
+
+setConnectedUI(false);
+log('Tap "Connect" to scan for PROG7000.', 'sys');
+</script>
+</body>
+</html>
