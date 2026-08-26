@@ -431,6 +431,11 @@ async function sendText(text) {
     log(`Sent: ${text}  (wire: ${hex})`, 'tx');
   } catch (err) {
     log(`Write failed: ${err}`, 'err');
+    // A failed GATT write is solid proof the link is actually down, even if
+    // Chrome/Android hasn't fired "gattserverdisconnected" yet (it can lag
+    // or, for a silent link-supervision timeout, never fire promptly at
+    // all) — without this the status badge is left stuck on "connected".
+    onDisconnected();
   }
 }
 
@@ -483,6 +488,9 @@ function startKeepalive() {
       await queueGattWrite(payload);
     } catch (err) {
       log(`[Keepalive] write failed — link is down: ${err}`, 'err');
+      // Same reasoning as in sendText()'s catch — a write failure is the
+      // most reliable signal we get that the connection is actually gone.
+      onDisconnected();
     }
   }, KEEPALIVE_INTERVAL_MS);
 }
