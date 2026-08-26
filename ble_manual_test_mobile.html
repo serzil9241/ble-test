@@ -50,13 +50,21 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     --ok: #3ecf6f;
     --err: #ff5f56;
     --warn: #ffb84d;
+    --ansi-blue: #4da6ff;
+    --ansi-cyan: #4dd0e1;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font-family: -apple-system, Roboto, "Segoe UI", sans-serif;
   }
-  body { display: flex; flex-direction: column; height: 100vh; }
+  body {
+    display: flex; flex-direction: column;
+    height: 100vh;   /* fallback for browsers without dvh */
+    height: 100dvh;  /* actual visible viewport on mobile Chrome — accounts for the address bar,
+                         so the footer (input box) is never pushed off-screen below the fold */
+    overflow: hidden; /* the page itself never scrolls — only #log does */
+  }
   header {
     padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -127,10 +135,48 @@ const keepaliveBtn = document.getElementById('keepaliveBtn');
 const cmdEl = document.getElementById('cmd');
 const sendBtn = document.getElementById('sendBtn');
 
+// Firmware status reports embed ANSI color codes (ANSI_RED/GREEN/YELLOW/...,
+// see main.h) via ble_report_line() — e.g. "\x1B[31m...\x1B[0m" for a red
+// line. textContent alone renders those escape bytes as invisible control
+// characters, which is why the color silently disappeared on mobile (the
+// PC-side test scripts show it because prompt_toolkit's ANSI() interprets
+// the same codes). This converts them into colored <span>s instead.
+const ANSI_COLOR_MAP = {
+  '30': 'var(--muted)',
+  '31': 'var(--err)',      // ANSI_RED
+  '32': 'var(--ok)',       // ANSI_GREEN
+  '33': 'var(--warn)',     // ANSI_YELLOW
+  '34': 'var(--ansi-blue)',// ANSI_BLUE
+  '36': 'var(--ansi-cyan)' // ANSI_CYAN
+  // '0' (ANSI_RESET) is handled separately below — it closes the span.
+};
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function ansiToHtml(text) {
+  const re = /\x1B\[(\d+)m/g;
+  let html = '', lastIndex = 0, openSpan = false, match;
+  while ((match = re.exec(text)) !== null) {
+    html += escapeHtml(text.slice(lastIndex, match.index));
+    lastIndex = re.lastIndex;
+    if (openSpan) { html += '</span>'; openSpan = false; }
+    const color = ANSI_COLOR_MAP[match[1]];
+    if (color) {
+      html += `<span style="color:${color}">`;
+      openSpan = true;
+    }
+  }
+  html += escapeHtml(text.slice(lastIndex));
+  if (openSpan) html += '</span>';
+  return html;
+}
+
 function log(text, cls) {
   const div = document.createElement('div');
   div.className = 'line ' + (cls || 'sys');
-  div.textContent = text;
+  div.innerHTML = ansiToHtml(text);
   logEl.appendChild(div);
   logEl.scrollTop = logEl.scrollHeight;
 }
