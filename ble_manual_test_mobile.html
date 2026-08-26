@@ -281,6 +281,7 @@ async function connect() {
     log('Web Bluetooth is not available in this browser (need Chrome on Android).', 'err');
     return;
   }
+  writeChain = Promise.resolve(); // fresh write queue for this connection
   try {
     log(`Requesting device "${DEVICE_NAME_PREFIX}"...`, 'sys');
     device = await navigator.bluetooth.requestDevice({
@@ -326,15 +327,34 @@ function disconnect() {
 
 // ---- Send ----
 
+// Web Bluetooth refuses a second GATT operation while one is still in
+// flight — it throws "GATT operation already in progress" instead of
+// queueing it. The keepalive timer (every 3s) and manual sends (button/
+// quick-command) both write to the same characteristic independently, so
+// without this queue they could collide and the keepalive write would
+// spuriously fail right when you send a command (or vice versa). Every
+// write below is chained onto this promise instead of firing directly,
+// so the actual GATT call always waits for the previous one to finish.
+let writeChain = Promise.resolve();
+
+function queueGattWrite(payload) {
+  const result = writeChain.then(() => {
+    if (characteristic.writeValueWithoutResponse) {
+      return characteristic.writeValueWithoutResponse(payload);
+    }
+    return characteristic.writeValue(payload); // older Chrome fallback
+  });
+  // Swallow here so one failed write doesn't wedge the chain for everyone
+  // after it — callers still see the real error via the returned promise.
+  writeChain = result.catch(() => {});
+  return result;
+}
+
 async function sendText(text) {
   if (!characteristic) return;
   const { hex, payload } = textToHexAsciiPayload(text);
   try {
-    if (characteristic.writeValueWithoutResponse) {
-      await characteristic.writeValueWithoutResponse(payload);
-    } else {
-      await characteristic.writeValue(payload); // older Chrome fallback
-    }
+    await queueGattWrite(payload);
     log(`Sent: ${text}  (wire: ${hex})`, 'tx');
   } catch (err) {
     log(`Write failed: ${err}`, 'err');
@@ -387,11 +407,7 @@ function startKeepalive() {
     if (!keepaliveEnabled || !characteristic) return;
     const { payload } = textToHexAsciiPayload(KEEPALIVE_TEXT);
     try {
-      if (characteristic.writeValueWithoutResponse) {
-        await characteristic.writeValueWithoutResponse(payload);
-      } else {
-        await characteristic.writeValue(payload);
-      }
+      await queueGattWrite(payload);
     } catch (err) {
       log(`[Keepalive] write failed — link is down: ${err}`, 'err');
     }
