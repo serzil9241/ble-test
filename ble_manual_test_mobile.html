@@ -2,7 +2,7 @@
 ble_manual_test_mobile.html — Android/Chrome mobile equivalent of ble_manual_test3.py
 
 Same behavior as the Python script:
-  - Scans/connects to "QuecHCM511S" (service FFF0), subscribes to notifications
+  - Scans/connects to "PROG7000" (service FFF0), subscribes to notifications
     on FFF1, and prints whatever the device sends.
   - Sends nothing on its own except an optional keepalive. You type a line and
     press Send (or Enter) — that text is hex-ASCII-encoded (2 hex chars per
@@ -28,7 +28,7 @@ Quick way to run it (no certificates needed):
        adb reverse tcp:8000 tcp:8000
   3. On the phone, open Chrome and go to:
        http://localhost:8000/ble_manual_test_mobile.html
-  4. Tap "Connect", pick "QuecHCM511S" from the browser's device picker.
+  4. Tap "Connect", pick "PROG7000" from the browser's device picker.
 
 (A plain http:// page served from the PC's LAN IP, e.g. http://192.168.x.x:8000/...,
 will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
@@ -145,7 +145,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 </footer>
 
 <script>
-const DEVICE_NAME_PREFIX = "QuecHCM511S";
+const DEVICE_NAME_PREFIX = "PROG7000";
 const SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb";
 const CHAR_UUID    = "0000fff1-0000-1000-8000-00805f9b34fb";
 const KEEPALIVE_TEXT = "Hello prog7000";
@@ -389,7 +389,7 @@ connectBtn.addEventListener('click', connect);
 disconnectBtn.addEventListener('click', disconnect);
 
 setConnectedUI(false);
-log('Tap "Connect" to scan for QuecHCM511S.', 'sys');
+log('Tap "Connect" to scan for PROG7000.', 'sys');
 </script>
 </body>
 </html>
