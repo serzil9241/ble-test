@@ -92,12 +92,16 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   .line.sys { color: var(--muted); }
   .line.err { color: var(--err); }
   #quickCmds {
-    display: flex; gap: 10px; padding: 10px 12px; background: var(--panel);
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel);
     border-bottom: 1px solid var(--border);
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    /* overflow-y must be set explicitly to "visible" here — leaving it unset
+       while overflow-x is "auto" makes the browser silently force overflow-y
+       to "auto" too (per the CSS overflow spec), turning this row into its
+       own vertical scroll/clip box and cropping the buttons. */
+    overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch;
   }
   #quickCmds button {
-    flex: 0 0 auto; font-size: 14px; font-weight: 600; padding: 10px 16px;
+    flex: 0 0 auto; font-size: 14px; font-weight: 600; padding: 10px 16px; line-height: 1.2;
     border-radius: 20px; white-space: nowrap;
     background: rgba(77,166,255,0.15); border: 1.5px solid var(--accent); color: var(--accent);
   }
