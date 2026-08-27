@@ -216,11 +216,11 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     <button class="quickCmdBtn" data-cmd="run all devices">run all devices</button>
     <button class="quickCmdBtn" data-cmd="stop">stop</button>
   </div>
-  <div id="slcInfo">
+  <div id="slcInfo" style="display:none">
     <div id="slcStatusLine">SLC status = —</div>
     <div id="slcVoltsAmpsLine">— · —</div>
   </div>
-  <div id="v24Info">
+  <div id="v24Info" style="display:none">
     <div id="v24StatusLine">24V status = —</div>
     <div id="v24VoltsAmpsLine">— · —</div>
   </div>
@@ -317,8 +317,10 @@ const clearLogBtn = document.getElementById('clearLogBtn');
 const rawLogEl = document.getElementById('rawLog');
 const oneAddrLineEl = document.getElementById('oneAddrLine');
 const oneValueLineEl = document.getElementById('oneValueLine');
+const slcInfoEl = document.getElementById('slcInfo');
 const slcStatusLineEl = document.getElementById('slcStatusLine');
 const slcVoltsAmpsLineEl = document.getElementById('slcVoltsAmpsLine');
+const v24InfoEl = document.getElementById('v24Info');
 const v24StatusLineEl = document.getElementById('v24StatusLine');
 const v24VoltsAmpsLineEl = document.getElementById('v24VoltsAmpsLine');
 const loopAddrLineEl = document.getElementById('loopAddrLine');
@@ -359,11 +361,13 @@ function resetOneView() {
 }
 
 function resetLoopView() {
+  slcInfoEl.style.display = 'none';
   slcStatusLineEl.textContent = 'SLC Status = —';
   slcStatusLineEl.style.color = 'var(--text)';
   lastLineAVolts = null;
   lastHCurrMa = null;
   renderSlcVoltsAmps();
+  v24InfoEl.style.display = 'none';
   v24StatusLineEl.textContent = '24V Out Status = —';
   v24StatusLineEl.style.color = 'var(--text)';
   lastV24OutVolts = null;
@@ -579,16 +583,19 @@ function renderSlcVoltsAmps() {
 function tryParseSlcInfo(text) {
   const sm = SLC_STATUS_RE.exec(text);
   if (sm) {
+    slcInfoEl.style.display = '';
     slcStatusLineEl.textContent = `SLC Status = ${sm[1]}`;
     slcStatusLineEl.style.color = slcStatusColor(sm[1]);
   }
   const lm = LINE_A_RE.exec(text);
   if (lm) {
+    slcInfoEl.style.display = '';
     lastLineAVolts = lm[1];
     renderSlcVoltsAmps();
   }
   const hm = H_CURR_RE.exec(text);
   if (hm) {
+    slcInfoEl.style.display = '';
     lastHCurrMa = hm[1];
     renderSlcVoltsAmps();
   }
@@ -619,16 +626,19 @@ function renderV24VoltsAmps() {
 function tryParseV24Info(text) {
   const sm = V24_STATUS_RE.exec(text);
   if (sm) {
+    v24InfoEl.style.display = '';
     v24StatusLineEl.textContent = `24V Out Status = ${sm[1]}`;
     v24StatusLineEl.style.color = v24StatusColor(sm[1]);
   }
   const om = V24_OUT_RE.exec(text);
   if (om) {
+    v24InfoEl.style.display = '';
     lastV24OutVolts = om[1];
     renderV24VoltsAmps();
   }
   const cm = V24_CURRENT_RE.exec(text);
   if (cm) {
+    v24InfoEl.style.display = '';
     lastV24OutCurrentMa = cm[1];
     renderV24VoltsAmps();
   }
