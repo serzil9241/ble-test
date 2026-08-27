@@ -351,14 +351,41 @@ clearLogBtn.addEventListener('click', () => { rawLogEl.innerHTML = ''; });
 // selected device; leaving either sub-screen sends "stop" first, so a
 // "run all devices"/"get device" left running doesn't keep going in the
 // background just because you navigated away from its screen.
-tileOneDevice.addEventListener('click', () => {
-  showView('one');
+function resetOneView() {
   oneAddrLineEl.textContent = 'Address = —';
+  oneAddrLineEl.style.display = '';
   oneValueLineEl.textContent = 'Value = —';
   oneValueLineEl.style.display = '';
+}
+
+function resetLoopView() {
+  slcStatusLineEl.textContent = 'SLC Status = —';
+  slcStatusLineEl.style.color = 'var(--text)';
+  lastLineAVolts = null;
+  lastHCurrMa = null;
+  renderSlcVoltsAmps();
+  v24StatusLineEl.textContent = '24V Out Status = —';
+  v24StatusLineEl.style.color = 'var(--text)';
+  lastV24OutVolts = null;
+  lastV24OutCurrentMa = null;
+  renderV24VoltsAmps();
+  loopAddrLineEl.textContent = 'Address = —';
+  loopAddrLineEl.style.display = 'none';
+  loopValueLineEl.textContent = 'Value = —';
+  loopValueLineEl.style.display = 'none';
+  loopFoundInfoEl.innerHTML = '';
+  loopFoundInfoEl.style.display = 'none';
+}
+
+tileOneDevice.addEventListener('click', () => {
+  showView('one');
+  resetOneView();
   sendText('get device');
 });
-tileLoopDevices.addEventListener('click', () => showView('loop'));
+tileLoopDevices.addEventListener('click', () => {
+  showView('loop');
+  resetLoopView();
+});
 backFromLoop.addEventListener('click', () => {
   sendText('stop');
   showView('home');
