@@ -141,6 +141,11 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     background: var(--panel); border-bottom: 1px solid var(--border);
   }
   #slcStatusLine, #slcVoltsAmpsLine { font-size: 20px; font-weight: 600; color: var(--text); }
+  #v24Info {
+    flex: 0 0 auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  #v24StatusLine, #v24VoltsAmpsLine { font-size: 20px; font-weight: 600; color: var(--text); }
   #loopSpacer { flex: 1 1 auto; min-height: 0; } /* reserved — more panels will land here */
   footer {
     flex: 0 0 auto; /* never shrink */
@@ -195,6 +200,10 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <div id="slcInfo">
     <div id="slcStatusLine">SLC status = —</div>
     <div id="slcVoltsAmpsLine">— · —</div>
+  </div>
+  <div id="v24Info">
+    <div id="v24StatusLine">24V status = —</div>
+    <div id="v24VoltsAmpsLine">— · —</div>
   </div>
   <div id="loopSpacer"></div>
   <footer>
@@ -273,6 +282,8 @@ const oneAddrLineEl = document.getElementById('oneAddrLine');
 const oneValueLineEl = document.getElementById('oneValueLine');
 const slcStatusLineEl = document.getElementById('slcStatusLine');
 const slcVoltsAmpsLineEl = document.getElementById('slcVoltsAmpsLine');
+const v24StatusLineEl = document.getElementById('v24StatusLine');
+const v24VoltsAmpsLineEl = document.getElementById('v24VoltsAmpsLine');
 
 // Three screens sharing the header/battery widget above them: 'home' (the
 // two big tiles, nothing else — no log, no traffic shown), 'loop' (get/run/
@@ -386,6 +397,7 @@ function handleNotification(bytes) {
   tryParseBattery(text);
   tryParseOneDeviceAnswer(text);
   tryParseSlcInfo(text);
+  tryParseV24Info(text);
 }
 
 // From ble_send_and_debug_print() / Prog7000_App.c:2963-2987 — the
@@ -428,6 +440,46 @@ function tryParseSlcInfo(text) {
   if (hm) {
     lastHCurrMa = hm[1];
     renderSlcVoltsAmps();
+  }
+}
+
+// From ble_send_and_debug_print() / Prog7000_App.c:2934-2952 — the
+// periodic status report's 24V-out block:
+//   "*****  24V OUT Status - OK  *****" (ANSI-colored; also "CURRENT LIMIT")
+//   "V24int=23.16V(1976)    V24R_out=23.14V(1974)    V24_Out=22.93V(1956)"
+//   "V24_Out_Current=63.00mA(021)"
+const V24_STATUS_RE = /24V OUT Status\s*-\s*([A-Za-z0-9() +-]+?)\s*\*/;
+const V24_OUT_RE = /V24_Out=([\d.]+)V/;
+const V24_CURRENT_RE = /V24_Out_Current=([\d.]+)mA/;
+let lastV24OutVolts = null, lastV24OutCurrentMa = null;
+
+function v24StatusColor(status) {
+  if (/current limit/i.test(status)) return 'var(--err)';
+  if (/ok/i.test(status)) return 'var(--ok)';
+  return 'var(--text)';
+}
+
+function renderV24VoltsAmps() {
+  const voltsStr = (lastV24OutVolts === null) ? '—' : `${lastV24OutVolts}V`;
+  const ampsStr = (lastV24OutCurrentMa === null) ? '—' : `${lastV24OutCurrentMa}mA`;
+  v24VoltsAmpsLineEl.textContent = `${voltsStr} · ${ampsStr}`;
+}
+
+function tryParseV24Info(text) {
+  const sm = V24_STATUS_RE.exec(text);
+  if (sm) {
+    v24StatusLineEl.textContent = `24V status = ${sm[1]}`;
+    v24StatusLineEl.style.color = v24StatusColor(sm[1]);
+  }
+  const om = V24_OUT_RE.exec(text);
+  if (om) {
+    lastV24OutVolts = om[1];
+    renderV24VoltsAmps();
+  }
+  const cm = V24_CURRENT_RE.exec(text);
+  if (cm) {
+    lastV24OutCurrentMa = cm[1];
+    renderV24VoltsAmps();
   }
 }
 
