@@ -136,16 +136,14 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   .viewHeader h2 { font-size: 15px; margin: 0; font-weight: 600; flex: 1 1 auto; }
   #oneDeviceInfo { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
   #oneAddrLine, #oneValueLine { font-size: 22px; font-weight: 600; color: var(--text); }
-  #slcInfo {
-    flex: 0 0 auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;
-    background: var(--panel); border-bottom: 1px solid var(--border);
+  #slcInfo, #v24Info {
+    flex: 0 0 auto; padding: 6px 16px; display: flex; flex-direction: column; gap: 2px;
+    background: var(--panel);
   }
-  #slcStatusLine, #slcVoltsAmpsLine { font-size: 20px; font-weight: 600; color: var(--text); }
-  #v24Info {
-    flex: 0 0 auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;
-    background: var(--panel); border-bottom: 1px solid var(--border);
+  #v24Info { border-bottom: 1px solid var(--border); }
+  #slcStatusLine, #slcVoltsAmpsLine, #v24StatusLine, #v24VoltsAmpsLine {
+    font-size: 20px; font-weight: 600; color: var(--text);
   }
-  #v24StatusLine, #v24VoltsAmpsLine { font-size: 20px; font-weight: 600; color: var(--text); }
   #loopSpacer { flex: 1 1 auto; min-height: 0; } /* reserved — more panels will land here */
   footer {
     flex: 0 0 auto; /* never shrink */
@@ -428,7 +426,7 @@ function renderSlcVoltsAmps() {
 function tryParseSlcInfo(text) {
   const sm = SLC_STATUS_RE.exec(text);
   if (sm) {
-    slcStatusLineEl.textContent = `SLC status = ${sm[1]}`;
+    slcStatusLineEl.textContent = `SLC Status = ${sm[1]}`;
     slcStatusLineEl.style.color = slcStatusColor(sm[1]);
   }
   const lm = LINE_A_RE.exec(text);
@@ -468,7 +466,7 @@ function renderV24VoltsAmps() {
 function tryParseV24Info(text) {
   const sm = V24_STATUS_RE.exec(text);
   if (sm) {
-    v24StatusLineEl.textContent = `24V status = ${sm[1]}`;
+    v24StatusLineEl.textContent = `24V Out Status = ${sm[1]}`;
     v24StatusLineEl.style.color = v24StatusColor(sm[1]);
   }
   const om = V24_OUT_RE.exec(text);
