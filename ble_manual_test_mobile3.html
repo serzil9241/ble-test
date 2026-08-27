@@ -146,7 +146,8 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
   }
   .viewHeader h2 { font-size: 15px; margin: 0; font-weight: 600; flex: 1 1 auto; }
-  #onePlaceholder { padding: 16px; color: var(--muted); font-size: 14px; margin: 0; }
+  #oneDeviceInfo { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  #oneAddrLine, #oneValueLine { font-size: 22px; font-weight: 600; color: var(--text); }
   footer {
     flex: 0 0 auto; /* never shrink — only #log should give up space */
     display: flex; gap: 8px; padding: 10px 12px; background: var(--panel);
@@ -212,7 +213,10 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <div class="quickCmdsRow">
     <button id="chAddrBtn" class="quickCmdBtn">change addr</button>
   </div>
-  <p id="onePlaceholder">More single-device controls go here later.</p>
+  <div id="oneDeviceInfo">
+    <div id="oneAddrLine">Address = —</div>
+    <div id="oneValueLine">Value = —</div>
+  </div>
 </div>
 
 <script>
@@ -268,6 +272,8 @@ const tileOneDevice = document.getElementById('tileOneDevice');
 const tileLoopDevices = document.getElementById('tileLoopDevices');
 const backFromLoop = document.getElementById('backFromLoop');
 const backFromOne = document.getElementById('backFromOne');
+const oneAddrLineEl = document.getElementById('oneAddrLine');
+const oneValueLineEl = document.getElementById('oneValueLine');
 
 // Three screens sharing the header/battery widget above them: 'home' (the
 // two big tiles, nothing else — no log, no traffic shown), 'loop' (get/run/
@@ -283,6 +289,9 @@ function showView(view) {
 // background just because you navigated away from its screen.
 tileOneDevice.addEventListener('click', () => {
   showView('one');
+  oneAddrLineEl.textContent = 'Address = —';
+  oneValueLineEl.textContent = 'Value = —';
+  oneValueLineEl.style.display = '';
   sendText('get device');
 });
 tileLoopDevices.addEventListener('click', () => showView('loop'));
@@ -416,6 +425,28 @@ function handleNotification(bytes) {
     log(text, 'rx');
   }
   tryParseBattery(text);
+  tryParseOneDeviceAnswer(text);
+}
+
+// From receive_addr_opc_data() / Prog7000_App.c:1252,1261,1273 — a "get
+// device" reply is either "Receive  ADDR=5 OPC=2  DATA=123" (or DATA1=...
+// for the 4-byte form) or, if the addressed device didn't answer,
+// "tr_com = 1 " / "tr_com = 2 ".
+const DEVICE_ANS_RE = /ADDR=(\d+)\s+OPC=(\d+)\s+DATA1?=(\d+)/;
+const TR_COM_RE = /tr_com\s*=\s*(\d+)/;
+
+function tryParseOneDeviceAnswer(text) {
+  if (TR_COM_RE.test(text)) {
+    oneAddrLineEl.textContent = 'Address = Not Connected';
+    oneValueLineEl.style.display = 'none';
+    return;
+  }
+  const dm = DEVICE_ANS_RE.exec(text);
+  if (dm) {
+    oneAddrLineEl.textContent = `Address = ${dm[1]}`;
+    oneValueLineEl.textContent = `Value = ${dm[3]}`;
+    oneValueLineEl.style.display = '';
+  }
 }
 
 // Fished out of the firmware's own periodic status report
