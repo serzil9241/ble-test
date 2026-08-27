@@ -277,10 +277,23 @@ function showView(view) {
   loopView.style.display = (view === 'loop') ? '' : 'none';
   oneView.style.display = (view === 'one') ? '' : 'none';
 }
-tileOneDevice.addEventListener('click', () => showView('one'));
+// Entering "one device" immediately asks the firmware about the currently
+// selected device; leaving either sub-screen sends "stop" first, so a
+// "run all devices"/"get device" left running doesn't keep going in the
+// background just because you navigated away from its screen.
+tileOneDevice.addEventListener('click', () => {
+  showView('one');
+  sendText('get device');
+});
 tileLoopDevices.addEventListener('click', () => showView('loop'));
-backFromLoop.addEventListener('click', () => showView('home'));
-backFromOne.addEventListener('click', () => showView('home'));
+backFromLoop.addEventListener('click', () => {
+  sendText('stop');
+  showView('home');
+});
+backFromOne.addEventListener('click', () => {
+  sendText('stop');
+  showView('home');
+});
 const battRowEl = document.getElementById('battRow');
 const battFillEl = document.getElementById('battFill');
 const battBoltEl = document.getElementById('battBolt');
