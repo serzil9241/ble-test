@@ -69,10 +69,10 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     height: 100vh;   /* fallback for browsers without dvh */
     height: 100dvh;  /* actual visible viewport on mobile Chrome — accounts for the address bar,
                          so the footer (input box) is never pushed off-screen below the fold */
-    overflow: hidden; /* the page itself never scrolls — only #log does */
+    overflow: hidden; /* nothing here scrolls anymore — no live log, everything is a fixed-position field that updates in place */
   }
   header {
-    flex: 0 0 auto; /* never shrink — only #log should give up space */
+    flex: 0 0 auto; /* never shrink */
     padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   }
@@ -87,18 +87,6 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   button:active { background: #2f3542; }
   button:disabled { opacity: 0.4; cursor: default; }
   button.primary { background: var(--accent); color: #06131f; border-color: var(--accent); font-weight: 600; }
-  #log {
-    flex: 1 1 auto; min-height: 0; /* let this shrink instead of pushing header/buttons/footer
-                                       out of view when the on-screen keyboard shrinks the viewport */
-    overflow-y: auto; padding: 10px 12px; font-family: "SFMono-Regular", Consolas, monospace;
-    font-size: 13px; white-space: pre-wrap; word-break: break-word; line-height: 1.5;
-  }
-  .line { margin: 0 0 2px 0; }
-  .line.tx { color: var(--accent); }
-  .line.rx { color: var(--text); }
-  .line.sys { color: var(--muted); }
-  .line.err { color: var(--err); }
-  .line.warn { color: var(--warn); }
   #battRow {
     flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
     padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
@@ -110,7 +98,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   #battBolt { animation: battPulse 1.4s ease-in-out infinite; }
   @keyframes battPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
   .quickCmdsRow {
-    flex: 0 0 auto; /* never shrink — only #log should give up space */
+    flex: 0 0 auto; /* never shrink */
     display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel);
     border-bottom: 1px solid var(--border);
     /* overflow-y must be set explicitly to "visible" here — leaving it unset
@@ -148,8 +136,13 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   .viewHeader h2 { font-size: 15px; margin: 0; font-weight: 600; flex: 1 1 auto; }
   #oneDeviceInfo { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
   #oneAddrLine, #oneValueLine { font-size: 22px; font-weight: 600; color: var(--text); }
+  #slcInfo {
+    flex: 0 0 auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  #slcStatusLine, #slcLineALine, #slcHCurrLine { font-size: 20px; font-weight: 600; color: var(--text); }
   footer {
-    flex: 0 0 auto; /* never shrink — only #log should give up space */
+    flex: 0 0 auto; /* never shrink */
     display: flex; gap: 8px; padding: 10px 12px; background: var(--panel);
     border-top: 1px solid var(--border); align-items: center;
   }
@@ -198,7 +191,11 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     <button class="quickCmdBtn" data-cmd="run all devices">run all devices</button>
     <button class="quickCmdBtn" data-cmd="stop">stop</button>
   </div>
-  <div id="log"></div>
+  <div id="slcInfo">
+    <div id="slcStatusLine">SLC status = —</div>
+    <div id="slcLineALine">Line_A = —</div>
+    <div id="slcHCurrLine">H_Curr = —</div>
+  </div>
   <footer>
     <input id="cmd" type="text" placeholder="e.g. get all devices" autocomplete="off" autocapitalize="off">
     <button id="sendBtn" class="primary">Send</button>
@@ -257,7 +254,6 @@ function releaseWakeLock() {
 }
 let keepaliveTimer = null, keepaliveEnabled = true;
 
-const logEl = document.getElementById('log');
 const statusEl = document.getElementById('status');
 const connectBtn = document.getElementById('connectBtn');
 const disconnectBtn = document.getElementById('disconnectBtn');
@@ -274,6 +270,9 @@ const backFromLoop = document.getElementById('backFromLoop');
 const backFromOne = document.getElementById('backFromOne');
 const oneAddrLineEl = document.getElementById('oneAddrLine');
 const oneValueLineEl = document.getElementById('oneValueLine');
+const slcStatusLineEl = document.getElementById('slcStatusLine');
+const slcLineALineEl = document.getElementById('slcLineALine');
+const slcHCurrLineEl = document.getElementById('slcHCurrLine');
 
 // Three screens sharing the header/battery widget above them: 'home' (the
 // two big tiles, nothing else — no log, no traffic shown), 'loop' (get/run/
@@ -313,50 +312,15 @@ const battChargeTextEl = document.getElementById('battChargeText');
 // prompt is pre-filled with lastChAddr + 1 instead of starting from scratch.
 let lastChAddr = null;
 
-// Firmware status reports embed ANSI color codes (ANSI_RED/GREEN/YELLOW/...,
-// see main.h) via ble_report_line() — e.g. "\x1B[31m...\x1B[0m" for a red
-// line. textContent alone renders those escape bytes as invisible control
-// characters, which is why the color silently disappeared on mobile (the
-// PC-side test scripts show it because prompt_toolkit's ANSI() interprets
-// the same codes). This converts them into colored <span>s instead.
-const ANSI_COLOR_MAP = {
-  '30': 'var(--muted)',
-  '31': 'var(--err)',      // ANSI_RED
-  '32': 'var(--ok)',       // ANSI_GREEN
-  '33': 'var(--warn)',     // ANSI_YELLOW
-  '34': 'var(--ansi-blue)',// ANSI_BLUE
-  '36': 'var(--ansi-cyan)' // ANSI_CYAN
-  // '0' (ANSI_RESET) is handled separately below — it closes the span.
-};
-
-function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function ansiToHtml(text) {
-  const re = /\x1B\[(\d+)m/g;
-  let html = '', lastIndex = 0, openSpan = false, match;
-  while ((match = re.exec(text)) !== null) {
-    html += escapeHtml(text.slice(lastIndex, match.index));
-    lastIndex = re.lastIndex;
-    if (openSpan) { html += '</span>'; openSpan = false; }
-    const color = ANSI_COLOR_MAP[match[1]];
-    if (color) {
-      html += `<span style="color:${color}">`;
-      openSpan = true;
-    }
-  }
-  html += escapeHtml(text.slice(lastIndex));
-  if (openSpan) html += '</span>';
-  return html;
-}
-
+// No visible log on screen anymore — every screen only shows fixed-position
+// fields (battery, SLC status/Line_A/H_Curr, one-device address/value) that
+// update in place as fresh data arrives, never a scrolling transcript. Raw
+// traffic is only meant to be watched on the debugger/debug-UART console,
+// not here. log() is kept as a thin console.log wrapper — every existing
+// call site (connect/disconnect notices, write failures, etc.) still works
+// unchanged, it just no longer touches the DOM.
 function log(text, cls) {
-  const div = document.createElement('div');
-  div.className = 'line ' + (cls || 'sys');
-  div.innerHTML = ansiToHtml(text);
-  logEl.appendChild(div);
-  logEl.scrollTop = logEl.scrollHeight;
+  console.log(`[${cls || 'sys'}] ${text}`);
 }
 
 function setConnectedUI(connected) {
@@ -418,14 +382,43 @@ function handleNotification(bytes) {
   } catch (e) {
     text = Array.from(decoded).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
   }
-  // USB/battery lines are always parsed to keep the battery widget current,
-  // but never printed in the log — the widget already shows that data, and
-  // it would otherwise spam the "loop devices" traffic log every ~7s.
-  if (!VBAT_RE.test(text) && !USB_RE.test(text)) {
-    log(text, 'rx');
-  }
+  log(text, 'rx'); // console only now — see log()
   tryParseBattery(text);
   tryParseOneDeviceAnswer(text);
+  tryParseSlcInfo(text);
+}
+
+// From ble_send_and_debug_print() / Prog7000_App.c:2963-2987 — the
+// periodic status report's SLC block:
+//   "*****  SLC Status - OK  *****" (ANSI-colored; also "CURRENT LIMIT",
+//   "Loop Not Closed", "Loop Not Closed(-)")
+//   "Line_A=21.74V(1855)   Line_Bp=0.35V(030)  Line_Bm=0.27V(023)"
+//   "H_Curr=27.73mA (628)"
+const SLC_STATUS_RE = /SLC Status\s*-\s*([A-Za-z0-9() +-]+?)\s*\*/;
+const LINE_A_RE = /Line_A\s*=\s*([\d.]+)V/;
+const H_CURR_RE = /H_Curr\s*=\s*([\d.]+)mA/;
+
+function slcStatusColor(status) {
+  if (/current limit/i.test(status)) return 'var(--err)';
+  if (/loop not closed/i.test(status)) return 'var(--warn)';
+  if (/ok/i.test(status)) return 'var(--ok)';
+  return 'var(--text)';
+}
+
+function tryParseSlcInfo(text) {
+  const sm = SLC_STATUS_RE.exec(text);
+  if (sm) {
+    slcStatusLineEl.textContent = `SLC status = ${sm[1]}`;
+    slcStatusLineEl.style.color = slcStatusColor(sm[1]);
+  }
+  const lm = LINE_A_RE.exec(text);
+  if (lm) {
+    slcLineALineEl.textContent = `Line_A = ${lm[1]}V`;
+  }
+  const hm = H_CURR_RE.exec(text);
+  if (hm) {
+    slcHCurrLineEl.textContent = `H_Curr = ${hm[1]}mA`;
+  }
 }
 
 // From receive_addr_opc_data() / Prog7000_App.c:1252,1261,1273 — a "get
