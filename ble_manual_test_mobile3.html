@@ -144,7 +144,16 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   #slcStatusLine, #slcVoltsAmpsLine, #v24StatusLine, #v24VoltsAmpsLine {
     font-size: 20px; font-weight: 600; color: var(--text);
   }
-  #loopSpacer { flex: 1 1 auto; min-height: 0; } /* reserved — more panels will land here */
+  #loopSpacer {
+    flex: 1 1 auto; min-height: 0; padding: 12px 16px;
+    display: flex; flex-direction: column; gap: 8px; overflow: hidden;
+  }
+  #loopAddrLine, #loopValueLine { flex: 0 0 auto; font-size: 22px; font-weight: 600; color: var(--text); }
+  #loopFoundInfo {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 18px; font-weight: 600; color: var(--text);
+  }
   footer {
     flex: 0 0 auto; /* never shrink */
     display: flex; gap: 8px; padding: 10px 12px; background: var(--panel);
@@ -203,7 +212,11 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     <div id="v24StatusLine">24V status = —</div>
     <div id="v24VoltsAmpsLine">— · —</div>
   </div>
-  <div id="loopSpacer"></div>
+  <div id="loopSpacer">
+    <div id="loopAddrLine" style="display:none">Address = —</div>
+    <div id="loopValueLine" style="display:none">Value = —</div>
+    <div id="loopFoundInfo" style="display:none"></div>
+  </div>
   <footer>
     <input id="cmd" type="text" placeholder="e.g. get all devices" autocomplete="off" autocapitalize="off">
     <button id="sendBtn" class="primary">Send</button>
@@ -282,6 +295,9 @@ const slcStatusLineEl = document.getElementById('slcStatusLine');
 const slcVoltsAmpsLineEl = document.getElementById('slcVoltsAmpsLine');
 const v24StatusLineEl = document.getElementById('v24StatusLine');
 const v24VoltsAmpsLineEl = document.getElementById('v24VoltsAmpsLine');
+const loopAddrLineEl = document.getElementById('loopAddrLine');
+const loopValueLineEl = document.getElementById('loopValueLine');
+const loopFoundInfoEl = document.getElementById('loopFoundInfo');
 
 // Three screens sharing the header/battery widget above them: 'home' (the
 // two big tiles, nothing else — no log, no traffic shown), 'loop' (get/run/
@@ -396,6 +412,69 @@ function handleNotification(bytes) {
   tryParseOneDeviceAnswer(text);
   tryParseSlcInfo(text);
   tryParseV24Info(text);
+  tryParseLoopScanInfo(text);
+}
+
+// Reuses the same "Receive ADDR=... OPC=... DATA=..." / "tr_com = N" shapes
+// as tryParseOneDeviceAnswer() — receive_addr_opc_data() (Prog7000_App.c)
+// sends the same format while "get all devices" walks the loop address by
+// address. "Found %d devices" (Prog7000_App.c:2071) marks scan completion —
+// once it arrives, Address/Value disappear and only the found-count line
+// stays. Reset to the "scanning" state happens in the "get all devices"
+// button's own click handler, below.
+const FOUND_DEVICES_RE = /Found\s+(\d+)\s+devices/;
+// The exact device-type labels ble_send_and_debug_print() reports after
+// "Found N devices" (Prog7000_App.c:2078-2123) — each only sent if its
+// count is non-zero.
+const DEVICE_TYPE_LABELS = [
+  'Photo Detector', 'Heat Detector', 'Gas Detector', 'Input Module',
+  'Switch', 'Power Supply', 'Isolator', 'Output Module', 'Extinguisher',
+  'Exting. Control', 'SCM', 'CO & Heat Detector', 'Photo & Heat Detector'
+];
+const DEVICE_TYPE_LINE_RE = new RegExp(
+  '^(' + DEVICE_TYPE_LABELS.map(l => l.replace(/[.&]/g, '\\$&')).join('|') + ')\\s+(\\d+)'
+);
+// Duplicate-address entries, up to 16 of them (Prog7000_App.c:2130-2138).
+const SAME_ADDRESS_RE = /Same Address\s*=\s*(\d+)/;
+
+function appendLoopResultLine(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  loopFoundInfoEl.appendChild(div);
+}
+
+function tryParseLoopScanInfo(text) {
+  const fm = FOUND_DEVICES_RE.exec(text);
+  if (fm) {
+    loopAddrLineEl.style.display = 'none';
+    loopValueLineEl.style.display = 'none';
+    loopFoundInfoEl.innerHTML = '';
+    loopFoundInfoEl.style.display = '';
+    appendLoopResultLine(`Found ${fm[1]} devices`);
+    return;
+  }
+  // Once the results panel is showing, the only other lines that can
+  // follow (per the firmware's own send order) are the device-type
+  // breakdown and duplicate-address entries — keep appending those.
+  if (loopFoundInfoEl.style.display !== 'none') {
+    const tm = DEVICE_TYPE_LINE_RE.exec(text);
+    if (tm) { appendLoopResultLine(`${tm[1]}  ${tm[2]}`); return; }
+    const sm2 = SAME_ADDRESS_RE.exec(text);
+    if (sm2) { appendLoopResultLine(`Same Address = ${sm2[1]}`); return; }
+  }
+  if (TR_COM_RE.test(text)) {
+    loopAddrLineEl.textContent = 'Address = Not Connected';
+    loopAddrLineEl.style.display = '';
+    loopValueLineEl.style.display = 'none';
+    return;
+  }
+  const dm = DEVICE_ANS_RE.exec(text);
+  if (dm) {
+    loopAddrLineEl.textContent = `Address = ${dm[1]}`;
+    loopAddrLineEl.style.display = '';
+    loopValueLineEl.textContent = `Value = ${dm[3]}`;
+    loopValueLineEl.style.display = '';
+  }
 }
 
 // From ble_send_and_debug_print() / Prog7000_App.c:2963-2987 — the
@@ -650,7 +729,22 @@ cmdEl.addEventListener('keydown', (e) => {
 });
 
 document.querySelectorAll('.quickCmdBtn').forEach(btn => {
-  if (btn.dataset.cmd) btn.addEventListener('click', () => sendText(btn.dataset.cmd));
+  if (!btn.dataset.cmd) return;
+  btn.addEventListener('click', () => {
+    if (btn.dataset.cmd === 'get all devices') {
+      // Fresh scan starting — show Address/Value again (in case a previous
+      // scan already replaced them with a "Found N devices" line) and
+      // reset them, so stale numbers from the last scan aren't mistaken
+      // for live ones while this one is still running.
+      loopFoundInfoEl.style.display = 'none';
+      loopFoundInfoEl.innerHTML = '';
+      loopAddrLineEl.textContent = 'Address = —';
+      loopAddrLineEl.style.display = '';
+      loopValueLineEl.textContent = 'Value = —';
+      loopValueLineEl.style.display = '';
+    }
+    sendText(btn.dataset.cmd);
+  });
 });
 
 // "change addr" — firmware's CommandParser expects "ch addr" directly
