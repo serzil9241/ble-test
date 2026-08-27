@@ -398,6 +398,7 @@ function resetLoopView() {
   loopFoundInfoEl.innerHTML = '';
   loopFoundInfoEl.style.display = 'none';
   lastSameAddress = null;
+  lastLedAddress = null;
 }
 
 tileOneDevice.addEventListener('click', () => {
@@ -412,11 +413,14 @@ tileLoopDevices.addEventListener('click', () => {
 commandBtn.addEventListener('click', () => showView('command'));
 backFromCommand.addEventListener('click', () => showView('loop'));
 
-// Defaults to the last duplicate address a scan found (lastSameAddress —
-// most likely what you actually want to toggle), falling back to 1 if no
-// scan has turned one up.
+// Priority: whatever address was last actually used for LED ON/OFF (either
+// one — so OFF picks up an address you just typed for ON, and vice versa)
+// beats the scan's Same Address, which beats the plain default of 1.
+let lastLedAddress = null;
+
 function promptForDeviceAddress(message) {
-  const defaultVal = (lastSameAddress !== null) ? lastSameAddress : '1';
+  const defaultVal = (lastLedAddress !== null) ? lastLedAddress
+    : (lastSameAddress !== null) ? lastSameAddress : '1';
   const input = window.prompt(message, defaultVal);
   if (input === null) return null; // cancelled
 
@@ -426,6 +430,7 @@ function promptForDeviceAddress(message) {
     return null;
   }
   lastChAddr = parseInt(trimmed, 10);
+  lastLedAddress = trimmed;
   return trimmed;
 }
 
@@ -889,6 +894,7 @@ document.querySelectorAll('.quickCmdBtn').forEach(btn => {
       loopValueLineEl.textContent = 'Value = —';
       loopValueLineEl.style.display = '';
       lastSameAddress = null;
+      lastLedAddress = null;
     }
     sendText(btn.dataset.cmd);
   });
