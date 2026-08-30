@@ -160,17 +160,19 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     display: flex; flex-direction: column; gap: 8px; overflow: hidden;
   }
   #loopAddrLine, #loopValueLine { flex: 0 0 auto; font-size: 22px; font-weight: 600; color: var(--text); }
-  #loopFoundWrap { position: relative; }
   #loopFoundInfo {
     max-height: 35vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
     display: flex; flex-direction: column; gap: 4px;
     font-size: 18px; font-weight: 600; color: var(--text);
   }
+  /* Part of the scrollable content itself (not a separate overlaid div) —
+     sticks to the bottom of the visible scroll area as you scroll, without
+     an extra wrapper element that could interfere with touch-scroll hit
+     testing on the actual list. */
   #loopFoundMoreHint {
-    display: none; position: absolute; left: 0; right: 0; bottom: 0;
+    display: none; position: sticky; bottom: 0; order: 9999;
     text-align: center; font-size: 12px; font-weight: 700; color: var(--muted);
-    background: linear-gradient(to bottom, transparent, var(--bg) 65%);
-    padding: 16px 0 2px; pointer-events: none;
+    background: var(--bg); border-radius: 10px; padding: 3px 0; margin-top: 2px;
   }
   footer {
     flex: 0 0 auto; /* never shrink */
@@ -235,8 +237,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <div id="loopSpacer">
     <div id="loopAddrLine" style="display:none">Address = —</div>
     <div id="loopValueLine" style="display:none">Value = —</div>
-    <div id="loopFoundWrap" style="display:none">
-      <div id="loopFoundInfo"></div>
+    <div id="loopFoundInfo" style="display:none">
       <div id="loopFoundMoreHint">&#9660; more</div>
     </div>
   </div>
@@ -352,9 +353,17 @@ const v24StatusLineEl = document.getElementById('v24StatusLine');
 const v24VoltsAmpsLineEl = document.getElementById('v24VoltsAmpsLine');
 const loopAddrLineEl = document.getElementById('loopAddrLine');
 const loopValueLineEl = document.getElementById('loopValueLine');
-const loopFoundWrapEl = document.getElementById('loopFoundWrap');
 const loopFoundInfoEl = document.getElementById('loopFoundInfo');
 const loopFoundMoreHintEl = document.getElementById('loopFoundMoreHint');
+
+// The hint lives inside the same scrollable box (see CSS `order: 9999`,
+// which keeps it visually last regardless of DOM position) so clearing the
+// found-devices list must remove only the line divs, never the hint itself.
+function clearLoopFoundLines() {
+  Array.from(loopFoundInfoEl.children).forEach((child) => {
+    if (child !== loopFoundMoreHintEl) child.remove();
+  });
+}
 
 // Three screens sharing the header/battery widget above them: 'home' (the
 // two big tiles, nothing else — no log, no traffic shown), 'loop' (get/run/
@@ -407,8 +416,8 @@ function resetLoopView() {
   loopAddrLineEl.style.display = 'none';
   loopValueLineEl.textContent = 'Value = —';
   loopValueLineEl.style.display = 'none';
-  loopFoundInfoEl.innerHTML = '';
-  loopFoundWrapEl.style.display = 'none';
+  clearLoopFoundLines();
+  loopFoundInfoEl.style.display = 'none';
   loopFoundMoreHintEl.style.display = 'none';
   lastSameAddress = null;
   lastLedAddress = null;
@@ -616,15 +625,15 @@ function tryParseLoopScanInfo(text) {
   if (fm) {
     loopAddrLineEl.style.display = 'none';
     loopValueLineEl.style.display = 'none';
-    loopFoundInfoEl.innerHTML = '';
-    loopFoundWrapEl.style.display = '';
+    clearLoopFoundLines();
+    loopFoundInfoEl.style.display = 'flex';
     appendLoopResultLine(`Found ${fm[1]} devices`);
     return;
   }
   // Once the results panel is showing, the only other lines that can
   // follow (per the firmware's own send order) are the device-type
   // breakdown and duplicate-address entries — keep appending those.
-  if (loopFoundWrapEl.style.display !== 'none') {
+  if (loopFoundInfoEl.style.display !== 'none') {
     const tm = DEVICE_TYPE_LINE_RE.exec(text);
     if (tm) { appendLoopResultLine(`${tm[1]}  ${tm[2]}`); return; }
     const sm2 = SAME_ADDRESS_RE.exec(text);
@@ -914,8 +923,8 @@ document.querySelectorAll('.quickCmdBtn').forEach(btn => {
       // scan already replaced them with a "Found N devices" line) and
       // reset them, so stale numbers from the last scan aren't mistaken
       // for live ones while this one is still running.
-      loopFoundWrapEl.style.display = 'none';
-      loopFoundInfoEl.innerHTML = '';
+      loopFoundInfoEl.style.display = 'none';
+      clearLoopFoundLines();
       loopFoundMoreHintEl.style.display = 'none';
       loopAddrLineEl.textContent = 'Address = —';
       loopAddrLineEl.style.display = '';
