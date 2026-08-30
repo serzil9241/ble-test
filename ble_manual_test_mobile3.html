@@ -159,7 +159,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     flex: 1 1 auto; min-height: 0; padding: 12px 16px;
     display: flex; flex-direction: column; gap: 8px; overflow: hidden;
   }
-  #loopAddrLine, #loopValueLine, #loopTransmitLine { flex: 0 0 auto; font-size: 22px; font-weight: 600; color: var(--text); }
+  #loopAddrLine, #loopValueLine, #loopTransmitLine, #loopRecErrorLine { flex: 0 0 auto; font-size: 22px; font-weight: 600; color: var(--text); }
   #loopFoundInfo {
     max-height: 35vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
     display: flex; flex-direction: column; gap: 4px;
@@ -237,7 +237,8 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <div id="loopSpacer">
     <div id="loopAddrLine" style="display:none">Address = —</div>
     <div id="loopValueLine" style="display:none">Value = —</div>
-    <div id="loopTransmitLine" style="display:none">Total transmit = —   receive error = —</div>
+    <div id="loopTransmitLine" style="display:none">Total transmit = —</div>
+    <div id="loopRecErrorLine" style="display:none">receive error = —</div>
     <div id="loopFoundInfo" style="display:none">
       <div id="loopFoundMoreHint">&#9660; more</div>
     </div>
@@ -355,6 +356,7 @@ const v24VoltsAmpsLineEl = document.getElementById('v24VoltsAmpsLine');
 const loopAddrLineEl = document.getElementById('loopAddrLine');
 const loopValueLineEl = document.getElementById('loopValueLine');
 const loopTransmitLineEl = document.getElementById('loopTransmitLine');
+const loopRecErrorLineEl = document.getElementById('loopRecErrorLine');
 const loopFoundInfoEl = document.getElementById('loopFoundInfo');
 const loopFoundMoreHintEl = document.getElementById('loopFoundMoreHint');
 
@@ -418,8 +420,10 @@ function resetLoopView() {
   loopAddrLineEl.style.display = 'none';
   loopValueLineEl.textContent = 'Value = —';
   loopValueLineEl.style.display = 'none';
-  loopTransmitLineEl.textContent = 'Total transmit = —   receive error = —';
+  loopTransmitLineEl.textContent = 'Total transmit = —';
   loopTransmitLineEl.style.display = 'none';
+  loopRecErrorLineEl.textContent = 'receive error = —';
+  loopRecErrorLineEl.style.display = 'none';
   clearLoopFoundLines();
   loopFoundInfoEl.style.display = 'none';
   loopFoundMoreHintEl.style.display = 'none';
@@ -631,8 +635,10 @@ loopFoundInfoEl.addEventListener('scroll', updateLoopFoundMoreHint);
 function tryParseLoopScanInfo(text) {
   const trm = TRANSMIT_RE.exec(text);
   if (trm) {
-    loopTransmitLineEl.textContent = `Total transmit = ${trm[1]}   receive error = ${trm[2]}`;
+    loopTransmitLineEl.textContent = `Total transmit = ${trm[1]}`;
     loopTransmitLineEl.style.display = '';
+    loopRecErrorLineEl.textContent = `receive error = ${trm[2]}`;
+    loopRecErrorLineEl.style.display = '';
     return;
   }
   const fm = FOUND_DEVICES_RE.exec(text);
@@ -944,8 +950,10 @@ document.querySelectorAll('.quickCmdBtn').forEach(btn => {
       loopAddrLineEl.style.display = '';
       loopValueLineEl.textContent = 'Value = —';
       loopValueLineEl.style.display = '';
-      loopTransmitLineEl.textContent = 'Total transmit = —   receive error = —';
+      loopTransmitLineEl.textContent = 'Total transmit = —';
       loopTransmitLineEl.style.display = 'none';
+      loopRecErrorLineEl.textContent = 'receive error = —';
+      loopRecErrorLineEl.style.display = 'none';
       lastSameAddress = null;
       lastLedAddress = null;
     }
