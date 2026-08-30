@@ -604,7 +604,10 @@ function appendLoopResultLine(text, color) {
 // clipped below the visible area, and hides it once scrolled to the end.
 function updateLoopFoundMoreHint() {
   const hasMore = loopFoundInfoEl.scrollHeight - loopFoundInfoEl.clientHeight - loopFoundInfoEl.scrollTop > 4;
-  loopFoundMoreHintEl.style.display = hasMore ? '' : 'none';
+  // "none" is this element's CSS-rule default (not just an inline override),
+  // so clearing back to '' would fall through to that same "none" — has to
+  // be set to an explicit visible value instead.
+  loopFoundMoreHintEl.style.display = hasMore ? 'block' : 'none';
 }
 loopFoundInfoEl.addEventListener('scroll', updateLoopFoundMoreHint);
 
