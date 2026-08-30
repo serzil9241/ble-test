@@ -44,7 +44,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>BLE Manual Test (Mobile)</title>
+<title>Prog7000 Test - Mobile</title>
 <style>
   :root {
     --bg: #111318;
@@ -189,7 +189,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 <body>
 
 <header>
-  <h1>BLE Manual Test — Mobile</h1>
+  <h1>Prog7000 Test - Mobile</h1>
   <span id="status">disconnected</span>
   <button id="connectBtn" class="primary">Connect</button>
   <button id="disconnectBtn" disabled>Disconnect</button>
@@ -197,7 +197,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <button id="logBtn">Log</button>
 </header>
 
-<div id="battRow" title="Waiting for a battery status report...">
+<div id="battRow" style="display:none" title="Waiting for a battery status report...">
   <svg id="battSvg" viewBox="0 0 54 128" width="38" height="90">
     <rect x="17" y="0" width="20" height="10" rx="3" fill="var(--muted)"/>
     <rect x="2" y="8" width="50" height="118" rx="10" fill="none" stroke="var(--muted)" stroke-width="7"/>
@@ -525,6 +525,7 @@ function setConnectedUI(connected) {
   // so their own buttons no longer need their own disabled tracking.
   tileOneDevice.disabled = !connected;
   tileLoopDevices.disabled = !connected;
+  battRowEl.style.display = connected ? '' : 'none';
 }
 
 // ---- ASCII-hex encode/decode (mirrors ble_manual_test3.py) ----
