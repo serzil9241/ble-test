@@ -918,7 +918,7 @@ cmdEl.addEventListener('keydown', (e) => {
 document.querySelectorAll('.quickCmdBtn').forEach(btn => {
   if (!btn.dataset.cmd) return;
   btn.addEventListener('click', () => {
-    if (btn.dataset.cmd === 'get all devices') {
+    if (btn.dataset.cmd === 'get all devices' || btn.dataset.cmd === 'run all devices') {
       // Fresh scan starting — show Address/Value again (in case a previous
       // scan already replaced them with a "Found N devices" line) and
       // reset them, so stale numbers from the last scan aren't mistaken
