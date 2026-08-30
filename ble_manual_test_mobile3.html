@@ -795,7 +795,8 @@ function tryParseOneDeviceAnswer(text) {
 //   "*****  BATTERY Status - FULL Charging  *****" (ANSI-colored)
 // The two lines arrive as separate BLE notifications, so state is kept
 // across calls and the battery widget is redrawn after either one lands.
-const VBAT_RE = /Vbat\s*=\s*([\d.]+)\s*V.*?(\d{1,3})\s*%/;
+// Percent is now a float, e.g. "87.3%" (Prog7000_App.c:3093, "%2.1f%%").
+const VBAT_RE = /Vbat\s*=\s*([\d.]+)\s*V.*?([\d.]+)\s*%/;
 // Same USB-present threshold the firmware itself uses (USB_LOW_VOLTAGE =
 // 3.5*USB_VOLT1, Prog7000_App.c:2391) — below it usb_state is ST_CUT
 // (no USB), above it the module considers USB actually connected.
@@ -807,7 +808,7 @@ function tryParseBattery(text) {
   const vm = VBAT_RE.exec(text);
   if (vm) {
     battVoltage = parseFloat(vm[1]);
-    battPercent = Math.max(0, Math.min(100, parseInt(vm[2], 10)));
+    battPercent = Math.max(0, Math.min(100, parseFloat(vm[2])));
   }
   const um = USB_RE.exec(text);
   if (um) {
@@ -826,7 +827,7 @@ function updateBatteryWidget() {
   battFillEl.setAttribute('fill', color);
   battBoltEl.style.display = usbConnected ? '' : 'none';
   const voltStr = (battVoltage === null) ? '' : ` · ${battVoltage.toFixed(2)}V`;
-  battTextEl.textContent = `${battPercent}%${voltStr}`;
+  battTextEl.textContent = `${battPercent.toFixed(1)}%${voltStr}`;
   battChargeTextEl.style.display = usbConnected ? '' : 'none';
   battRowEl.title = usbConnected ? 'USB connected' : 'USB not connected';
 }
