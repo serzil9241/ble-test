@@ -148,8 +148,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   #oneDeviceInfo { padding: 16px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
   #oneTextCol { display: flex; flex-direction: column; gap: 12px; }
   #oneDeviceIconWrap { flex: 0 0 auto; margin-right: 24px; }
-  #oneAddrLine, #oneValueLine { font-size: 22px; font-weight: 600; color: var(--text); }
-  #oneVersionLine, #oneTempLine { font-size: 16px; font-weight: 500; color: var(--muted); }
+  #oneAddrLine, #oneValueLine, #oneVersionLine, #oneTempLine { font-size: 22px; font-weight: 600; color: var(--text); }
   #slcInfo, #v24Info {
     flex: 0 0 auto; padding: 6px 16px; display: flex; flex-direction: column; gap: 2px;
     background: var(--panel);
@@ -433,7 +432,7 @@ function resetOneView() {
   oneValueLineEl.style.display = '';
   oneVersionLineEl.textContent = 'Version = —';
   oneVersionLineEl.style.display = '';
-  oneTempLineEl.textContent = 'Temp = —';
+  oneTempLineEl.textContent = 'Temp = — °C';
   oneTempLineEl.style.display = '';
   oneDeviceIconWrapEl.style.display = '';
 }
@@ -818,14 +817,10 @@ const TR_COM_RE = /tr_com\s*=\s*(\d+)/;
 // Address and Value, are read from here now.
 const ONE_DEVICE_RE = /One Device Addr=(\d+)\s+Value=(\d+)\s+Version=(\d+)\s+Temp=(\d+)\s+Type=(\d+)/;
 
-// Raw device-type byte -> icon. Mirrors the classification switch in
-// Prog7000_App.c (~line 2026, CODE_PHOTOELECTRIC=4); only the Photo
-// Detector has hand-drawn artwork so far, so every other type just hides
-// the icon until more of the real LCD glyphs are traced.
-const CODE_PHOTOELECTRIC = 4;
-function isPhotoDetectorType(type) {
-  return type === CODE_PHOTOELECTRIC;
-}
+// TODO: once more device-type icons are traced from the real LCD, pick one
+// per Type here (mirrors the classification switch in Prog7000_App.c
+// ~line 2026, CODE_PHOTOELECTRIC=4 etc.). For now the Photo Detector icon
+// is the only artwork that exists, so it's shown for every type.
 
 function tryParseOneDeviceAnswer(text) {
   if (TR_COM_RE.test(text)) {
@@ -843,9 +838,9 @@ function tryParseOneDeviceAnswer(text) {
     oneValueLineEl.style.display = '';
     oneVersionLineEl.textContent = `Version = ${dm[3]}`;
     oneVersionLineEl.style.display = '';
-    oneTempLineEl.textContent = `Temp = ${dm[4]}`;
+    oneTempLineEl.textContent = `Temp = ${dm[4]}°C`;
     oneTempLineEl.style.display = '';
-    oneDeviceIconWrapEl.style.display = isPhotoDetectorType(Number(dm[5])) ? '' : 'none';
+    oneDeviceIconWrapEl.style.display = '';
   }
 }
 
