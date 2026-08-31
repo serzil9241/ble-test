@@ -148,7 +148,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   #oneDeviceInfo { padding: 16px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
   #oneTextCol { display: flex; flex-direction: column; gap: 12px; }
   #oneDeviceIconWrap { flex: 0 0 auto; margin-right: 24px; }
-  #oneDeviceIcon rect { shape-rendering: crispEdges; }
+  #oneDeviceIcon rect { rx: 0.7px; }
   #oneAddrLine, #oneValueLine { font-size: 22px; font-weight: 600; color: var(--text); }
   #slcInfo, #v24Info {
     flex: 0 0 auto; padding: 6px 16px; display: flex; flex-direction: column; gap: 2px;
@@ -267,8 +267,17 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     </div>
     <div id="oneDeviceIconWrap">
       <svg id="oneDeviceIcon" viewBox="0 0 93 48" width="93" height="48">
+        <defs>
+          <filter id="ledGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="0.5" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
         <rect x="0" y="0" width="93" height="48" fill="#161616"/>
-        <g fill="#ffcc00">
+        <g fill="#ffcc00" filter="url(#ledGlow)">
           <rect x="0" y="0" width="93" height="3"/>
           <rect x="0" y="3" width="3" height="3"/>
           <rect x="90" y="3" width="3" height="3"/>
