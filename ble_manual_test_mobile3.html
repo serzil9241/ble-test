@@ -546,7 +546,12 @@ function log(text, cls) {
   console.log(`[${cls || 'sys'}] ${text}`);
   const div = document.createElement('div');
   div.className = 'logLine ' + (cls || 'sys');
-  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  // Millisecond resolution matters here: figuring out where a sub-second
+  // delay actually goes (queue/write vs. firmware round-trip vs. BLE
+  // transit) needs finer granularity than toLocaleTimeString's whole
+  // seconds gives.
+  const now = new Date();
+  const ts = now.toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
   div.textContent = `[${ts}] ${text}`;
   rawLogEl.appendChild(div);
   rawLogEl.scrollTop = rawLogEl.scrollHeight;
