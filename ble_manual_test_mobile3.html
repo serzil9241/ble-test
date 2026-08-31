@@ -145,9 +145,9 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
   }
   .viewHeader h2 { font-size: 15px; margin: 0; font-weight: 600; flex: 1 1 auto; }
-  #oneDeviceInfo { padding: 16px; display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  #oneDeviceInfo { padding: 16px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
   #oneTextCol { display: flex; flex-direction: column; gap: 12px; }
-  #oneDeviceIconWrap { flex: 0 0 auto; margin-right: 24px; display: flex; flex-direction: column; gap: 8px; }
+  #oneDeviceIconWrap { flex: 0 0 auto; margin-right: 24px; }
   #oneAddrLine, #oneValueLine, #oneVersionLine, #oneTempLine { font-size: 22px; font-weight: 600; color: var(--text); }
   #slcInfo, #v24Info {
     flex: 0 0 auto; padding: 6px 16px; display: flex; flex-direction: column; gap: 2px;
@@ -266,59 +266,26 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
       <div id="oneVersionLine">Version = —</div>
       <div id="oneTempLine">Temp = —</div>
     </div>
-    <!-- TEMP: all 4 icon-text variants stacked here for side-by-side review
-         against the address/value text column; once one is picked, this
-         collapses back to a single #oneDeviceIcon like before. -->
     <div id="oneDeviceIconWrap">
-    <svg id="oneDeviceIcon" viewBox="0 0 93 48" width="93" height="48">
-      <rect x="0" y="0" width="93" height="48" fill="#161616"/>
-      <path d="M3,3 L90,3 L90,13.5 L83.2,24 L9.8,24 L3,13.5 Z" fill="none" stroke="#fdf6e3" stroke-width="2.2"/>
-      <text x="46.5" y="18.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="0.3" fill="#fdf6e3">PHOTO</text>
-      <path d="M18,24 L75,24 L75,35 L73,38 L20,38 L18,35 Z" fill="none" stroke="#fdf6e3" stroke-width="1.8"/>
-      <g fill="#fdf6e3">
-        <rect x="21" y="28" width="3" height="7"/><rect x="27" y="28" width="3" height="7"/><rect x="33" y="28" width="3" height="7"/>
-        <rect x="39" y="28" width="3" height="7"/><rect x="45" y="28" width="3" height="7"/><rect x="51" y="28" width="3" height="7"/>
-        <rect x="57" y="28" width="3" height="7"/><rect x="63" y="28" width="3" height="7"/><rect x="69" y="28" width="3" height="7"/>
-      </g>
-      <path d="M58,38 L67,38 L62.5,44 Z" fill="#fdf6e3"/>
-    </svg>
-    <svg viewBox="0 0 93 48" width="93" height="48">
-      <rect x="0" y="0" width="93" height="48" fill="#161616"/>
-      <path d="M3,3 L90,3 L90,13.5 L83.2,24 L9.8,24 L3,13.5 Z" fill="none" stroke="#fdf6e3" stroke-width="2.2"/>
-      <text x="46.5" y="18.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="0.3" fill="#fdf6e3">GAS</text>
-      <path d="M18,24 L75,24 L75,35 L73,38 L20,38 L18,35 Z" fill="none" stroke="#fdf6e3" stroke-width="1.8"/>
-      <g fill="#fdf6e3">
-        <rect x="21" y="28" width="3" height="7"/><rect x="27" y="28" width="3" height="7"/><rect x="33" y="28" width="3" height="7"/>
-        <rect x="39" y="28" width="3" height="7"/><rect x="45" y="28" width="3" height="7"/><rect x="51" y="28" width="3" height="7"/>
-        <rect x="57" y="28" width="3" height="7"/><rect x="63" y="28" width="3" height="7"/><rect x="69" y="28" width="3" height="7"/>
-      </g>
-      <path d="M58,38 L67,38 L62.5,44 Z" fill="#fdf6e3"/>
-    </svg>
-    <svg viewBox="0 0 93 48" width="93" height="48">
-      <rect x="0" y="0" width="93" height="48" fill="#161616"/>
-      <path d="M3,3 L90,3 L90,13.5 L83.2,24 L9.8,24 L3,13.5 Z" fill="none" stroke="#fdf6e3" stroke-width="2.2"/>
-      <text x="46.5" y="18.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="0" fill="#fdf6e3">t&#176; FIX</text>
-      <path d="M18,24 L75,24 L75,35 L73,38 L20,38 L18,35 Z" fill="none" stroke="#fdf6e3" stroke-width="1.8"/>
-      <g fill="#fdf6e3">
-        <rect x="21" y="28" width="3" height="7"/><rect x="27" y="28" width="3" height="7"/><rect x="33" y="28" width="3" height="7"/>
-        <rect x="39" y="28" width="3" height="7"/><rect x="45" y="28" width="3" height="7"/><rect x="51" y="28" width="3" height="7"/>
-        <rect x="57" y="28" width="3" height="7"/><rect x="63" y="28" width="3" height="7"/><rect x="69" y="28" width="3" height="7"/>
-      </g>
-      <path d="M58,38 L67,38 L62.5,44 Z" fill="#fdf6e3"/>
-    </svg>
-    <svg viewBox="0 0 93 48" width="93" height="48">
-      <rect x="0" y="0" width="93" height="48" fill="#161616"/>
-      <path d="M3,3 L90,3 L90,13.5 L83.2,24 L9.8,24 L3,13.5 Z" fill="none" stroke="#fdf6e3" stroke-width="2.2"/>
-      <text x="46.5" y="18.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="0.3" fill="#fdf6e3">P+t&#176;</text>
-      <path d="M18,24 L75,24 L75,35 L73,38 L20,38 L18,35 Z" fill="none" stroke="#fdf6e3" stroke-width="1.8"/>
-      <g fill="#fdf6e3">
-        <rect x="21" y="28" width="3" height="7"/><rect x="27" y="28" width="3" height="7"/><rect x="33" y="28" width="3" height="7"/>
-        <rect x="39" y="28" width="3" height="7"/><rect x="45" y="28" width="3" height="7"/><rect x="51" y="28" width="3" height="7"/>
-        <rect x="57" y="28" width="3" height="7"/><rect x="63" y="28" width="3" height="7"/><rect x="69" y="28" width="3" height="7"/>
-      </g>
-      <path d="M58,38 L67,38 L62.5,44 Z" fill="#fdf6e3"/>
-    </svg>
-  </div>
+      <svg id="oneDeviceIcon" viewBox="0 0 93 48" width="93" height="48">
+        <rect x="0" y="0" width="93" height="48" fill="#161616"/>
+        <path d="M3,3 L90,3 L90,13.5 L83.2,24 L9.8,24 L3,13.5 Z" fill="none" stroke="#fdf6e3" stroke-width="2.2"/>
+        <text id="oneDeviceIconText" x="46.5" y="18.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="0.3" fill="#fdf6e3">PHOTO</text>
+        <path d="M18,24 L75,24 L75,35 L73,38 L20,38 L18,35 Z" fill="none" stroke="#fdf6e3" stroke-width="1.8"/>
+        <g fill="#fdf6e3">
+          <rect x="21" y="28" width="3" height="7"/>
+          <rect x="27" y="28" width="3" height="7"/>
+          <rect x="33" y="28" width="3" height="7"/>
+          <rect x="39" y="28" width="3" height="7"/>
+          <rect x="45" y="28" width="3" height="7"/>
+          <rect x="51" y="28" width="3" height="7"/>
+          <rect x="57" y="28" width="3" height="7"/>
+          <rect x="63" y="28" width="3" height="7"/>
+          <rect x="69" y="28" width="3" height="7"/>
+        </g>
+        <path d="M58,38 L67,38 L62.5,44 Z" fill="#fdf6e3"/>
+      </svg>
+    </div>
   </div>
 </div>
 
@@ -409,6 +376,7 @@ const oneValueLineEl = document.getElementById('oneValueLine');
 const oneVersionLineEl = document.getElementById('oneVersionLine');
 const oneTempLineEl = document.getElementById('oneTempLine');
 const oneDeviceIconWrapEl = document.getElementById('oneDeviceIconWrap');
+const oneDeviceIconTextEl = document.getElementById('oneDeviceIconText');
 const slcInfoEl = document.getElementById('slcInfo');
 const slcStatusLineEl = document.getElementById('slcStatusLine');
 const slcVoltsAmpsLineEl = document.getElementById('slcVoltsAmpsLine');
@@ -850,10 +818,16 @@ const TR_COM_RE = /tr_com\s*=\s*(\d+)/;
 // Address and Value, are read from here now.
 const ONE_DEVICE_RE = /One Device Addr=(\d+)\s+Value=(\d+)\s+Version=(\d+)\s+Temp=(\d+)\s+Type=(\d+)/;
 
-// TODO: once more device-type icons are traced from the real LCD, pick one
-// per Type here (mirrors the classification switch in Prog7000_App.c
-// ~line 2026, CODE_PHOTOELECTRIC=4 etc.). For now the Photo Detector icon
-// is the only artwork that exists, so it's shown for every type.
+// Raw device-type byte (Prog7000_App.c ~line 2026, e.g. CODE_HEAT=2,
+// CODE_PHOTOELECTRIC=4, CODE_GAS1=9, CODE_PHOTO_HEAT_A=19) -> which of our
+// four hand-drawn icon variants to show, per user-supplied mapping. Any
+// other Type value has no artwork yet, so the icon is left blank on purpose.
+const DEVICE_TYPE_ICON_TEXT = {
+  4:  { text: 'PHOTO',  letterSpacing: 0.3 }, // CODE_PHOTOELECTRIC
+  9:  { text: 'GAS',    letterSpacing: 0.3 }, // CODE_GAS1
+  2:  { text: 't° FIX', letterSpacing: 0 },   // CODE_HEAT
+  19: { text: 'P+t°',   letterSpacing: 0.3 }, // CODE_PHOTO_HEAT_A
+};
 
 function tryParseOneDeviceAnswer(text) {
   if (TR_COM_RE.test(text)) {
@@ -873,7 +847,14 @@ function tryParseOneDeviceAnswer(text) {
     oneVersionLineEl.style.display = '';
     oneTempLineEl.textContent = `Temp = ${dm[4]}°C`;
     oneTempLineEl.style.display = '';
-    oneDeviceIconWrapEl.style.display = '';
+    const iconInfo = DEVICE_TYPE_ICON_TEXT[Number(dm[5])];
+    if (iconInfo) {
+      oneDeviceIconTextEl.textContent = iconInfo.text;
+      oneDeviceIconTextEl.setAttribute('letter-spacing', iconInfo.letterSpacing);
+      oneDeviceIconWrapEl.style.display = '';
+    } else {
+      oneDeviceIconWrapEl.style.display = 'none';
+    }
   }
 }
 
