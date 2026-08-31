@@ -1053,9 +1053,10 @@ chAddrBtn.addEventListener('click', () => {
   }
 
   lastChAddr = parseInt(trimmed, 10);
-  // Clear the previous device's Address/Value/Version/Temp/icon right away —
-  // otherwise they stay on screen (stale, wrong device) until the firmware's
-  // reply for the new address actually arrives.
+  // Don't show the new address until the device actually confirms it — if
+  // the device wasn't flashed with this address, no reply will ever come
+  // back, and showing it optimistically would be a lie. Address, like
+  // Value/Version/Temp/icon, waits for the real reply.
   resetOneView();
   sendText('ch addr' + trimmed);
 });
