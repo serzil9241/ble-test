@@ -440,6 +440,7 @@ const ledOnBtn = document.getElementById('ledOnBtn');
 const ledOffBtn = document.getElementById('ledOffBtn');
 const oneAddrLineEl = document.getElementById('oneAddrLine');
 const oneValueLineEl = document.getElementById('oneValueLine');
+const oneDeviceIconWrapEl = document.getElementById('oneDeviceIconWrap');
 const slcInfoEl = document.getElementById('slcInfo');
 const slcStatusLineEl = document.getElementById('slcStatusLine');
 const slcVoltsAmpsLineEl = document.getElementById('slcVoltsAmpsLine');
@@ -494,6 +495,7 @@ function resetOneView() {
   oneAddrLineEl.style.display = '';
   oneValueLineEl.textContent = 'Value = —';
   oneValueLineEl.style.display = '';
+  oneDeviceIconWrapEl.style.display = '';
 }
 
 function resetLoopView() {
@@ -872,6 +874,7 @@ function tryParseOneDeviceAnswer(text) {
   if (TR_COM_RE.test(text)) {
     oneAddrLineEl.textContent = 'Address = Not Connected';
     oneValueLineEl.style.display = 'none';
+    oneDeviceIconWrapEl.style.display = 'none';
     return;
   }
   const dm = DEVICE_ANS_RE.exec(text);
@@ -879,6 +882,7 @@ function tryParseOneDeviceAnswer(text) {
     oneAddrLineEl.textContent = `Address = ${dm[1]}`;
     oneValueLineEl.textContent = `Value = ${dm[3]}`;
     oneValueLineEl.style.display = '';
+    oneDeviceIconWrapEl.style.display = '';
   }
 }
 
