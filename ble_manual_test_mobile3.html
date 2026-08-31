@@ -435,7 +435,10 @@ function resetOneView() {
   oneVersionLineEl.style.display = '';
   oneTempLineEl.textContent = 'Temp = — °C';
   oneTempLineEl.style.display = '';
-  oneDeviceIconWrapEl.style.display = '';
+  // Hidden (not just blanked) until a real answer sets its text via Type —
+  // otherwise the previous device's icon stays on screen since only the
+  // text lines above get cleared here.
+  oneDeviceIconWrapEl.style.display = 'none';
 }
 
 function resetLoopView() {
@@ -1050,6 +1053,10 @@ chAddrBtn.addEventListener('click', () => {
   }
 
   lastChAddr = parseInt(trimmed, 10);
+  // Clear the previous device's Address/Value/Version/Temp/icon right away —
+  // otherwise they stay on screen (stale, wrong device) until the firmware's
+  // reply for the new address actually arrives.
+  resetOneView();
   sendText('ch addr' + trimmed);
 });
 
