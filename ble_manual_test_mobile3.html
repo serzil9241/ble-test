@@ -149,6 +149,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   #oneTextCol { display: flex; flex-direction: column; gap: 12px; }
   #oneDeviceIconWrap { flex: 0 0 auto; margin-right: 24px; }
   #oneAddrLine, #oneValueLine { font-size: 22px; font-weight: 600; color: var(--text); }
+  #oneVersionLine, #oneTempLine { font-size: 16px; font-weight: 500; color: var(--muted); }
   #slcInfo, #v24Info {
     flex: 0 0 auto; padding: 6px 16px; display: flex; flex-direction: column; gap: 2px;
     background: var(--panel);
@@ -263,6 +264,8 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     <div id="oneTextCol">
       <div id="oneAddrLine">Address = —</div>
       <div id="oneValueLine">Value = —</div>
+      <div id="oneVersionLine">Version = —</div>
+      <div id="oneTempLine">Temp = —</div>
     </div>
     <div id="oneDeviceIconWrap">
       <svg id="oneDeviceIcon" viewBox="0 0 93 48" width="93" height="48">
@@ -371,6 +374,8 @@ const ledOnBtn = document.getElementById('ledOnBtn');
 const ledOffBtn = document.getElementById('ledOffBtn');
 const oneAddrLineEl = document.getElementById('oneAddrLine');
 const oneValueLineEl = document.getElementById('oneValueLine');
+const oneVersionLineEl = document.getElementById('oneVersionLine');
+const oneTempLineEl = document.getElementById('oneTempLine');
 const oneDeviceIconWrapEl = document.getElementById('oneDeviceIconWrap');
 const slcInfoEl = document.getElementById('slcInfo');
 const slcStatusLineEl = document.getElementById('slcStatusLine');
@@ -426,6 +431,10 @@ function resetOneView() {
   oneAddrLineEl.style.display = '';
   oneValueLineEl.textContent = 'Value = —';
   oneValueLineEl.style.display = '';
+  oneVersionLineEl.textContent = 'Version = —';
+  oneVersionLineEl.style.display = '';
+  oneTempLineEl.textContent = 'Temp = —';
+  oneTempLineEl.style.display = '';
   oneDeviceIconWrapEl.style.display = '';
 }
 
@@ -797,23 +806,46 @@ function tryParseV24Info(text) {
 // From receive_addr_opc_data() / Prog7000_App.c:1252,1261,1273 — a "get
 // device" reply is either "Receive  ADDR=5 OPC=2  DATA=123" (or DATA1=...
 // for the 4-byte form) or, if the addressed device didn't answer,
-// "tr_com = 1 " / "tr_com = 2 ".
+// "tr_com = 1 " / "tr_com = 2 ". Still used as-is by the Loop view's own
+// "get device" echo, below — the One Device screen has since moved to the
+// richer line right after it.
 const DEVICE_ANS_RE = /ADDR=(\d+)\s+OPC=(\d+)\s+DATA1?=(\d+)/;
 const TR_COM_RE = /tr_com\s*=\s*(\d+)/;
+
+// One Device screen's own summary line (Prog7000_App.c:1287) — sent right
+// after the raw ADDR=/OPC=/DATA= line above, once per "get device"/"get
+// version"/"get temperature"/"get type" reply. All 5 fields, including
+// Address and Value, are read from here now.
+const ONE_DEVICE_RE = /One Device Addr=(\d+)\s+Value=(\d+)\s+Version=(\d+)\s+Temp=(\d+)\s+Type=(\d+)/;
+
+// Raw device-type byte -> icon. Mirrors the classification switch in
+// Prog7000_App.c (~line 2026, CODE_PHOTOELECTRIC=4); only the Photo
+// Detector has hand-drawn artwork so far, so every other type just hides
+// the icon until more of the real LCD glyphs are traced.
+const CODE_PHOTOELECTRIC = 4;
+function isPhotoDetectorType(type) {
+  return type === CODE_PHOTOELECTRIC;
+}
 
 function tryParseOneDeviceAnswer(text) {
   if (TR_COM_RE.test(text)) {
     oneAddrLineEl.textContent = 'Address = Not Connected';
     oneValueLineEl.style.display = 'none';
+    oneVersionLineEl.style.display = 'none';
+    oneTempLineEl.style.display = 'none';
     oneDeviceIconWrapEl.style.display = 'none';
     return;
   }
-  const dm = DEVICE_ANS_RE.exec(text);
+  const dm = ONE_DEVICE_RE.exec(text);
   if (dm) {
     oneAddrLineEl.textContent = `Address = ${dm[1]}`;
-    oneValueLineEl.textContent = `Value = ${dm[3]}`;
+    oneValueLineEl.textContent = `Value = ${dm[2]}`;
     oneValueLineEl.style.display = '';
-    oneDeviceIconWrapEl.style.display = '';
+    oneVersionLineEl.textContent = `Version = ${dm[3]}`;
+    oneVersionLineEl.style.display = '';
+    oneTempLineEl.textContent = `Temp = ${dm[4]}`;
+    oneTempLineEl.style.display = '';
+    oneDeviceIconWrapEl.style.display = isPhotoDetectorType(Number(dm[5])) ? '' : 'none';
   }
 }
 
