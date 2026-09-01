@@ -128,13 +128,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
      dialog with no control over the keyboard shown. */
   #addrModalOverlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-    /* align to the top, not centered — a centered card gets pushed down
-       toward/under the on-screen keyboard once it opens (the keyboard eats
-       the bottom of the viewport, "fixed" positioning doesn't know that),
-       cropping the Cancel/OK row. Anchoring near the top keeps the whole
-       card comfortably above where a keyboard could reach. */
-    align-items: flex-start; justify-content: center; z-index: 1000; padding: 16px;
-    padding-top: 72px;
+    align-items: center; justify-content: center; z-index: 1000; padding: 16px;
   }
   #addrModalOverlay.open { display: flex; }
   #addrModalCard {
@@ -145,8 +139,20 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   #addrModalInput {
     width: 100%; font-size: 17px; font-weight: 600; text-align: center; padding: 7px;
     border-radius: 8px; border: 1px solid var(--border); background: #262b35; color: var(--text);
-    margin-bottom: 16px;
+    margin-bottom: 12px;
   }
+  /* Own digit pad instead of the OS keyboard — the input is readonly, so
+     tapping it never summons the system keyboard (with its suggestion bar,
+     GIF/clipboard/mic icons) in the first place, and we get to lay the
+     digits out exactly where/how we want, right under the field. */
+  #addrModalKeypad {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px;
+  }
+  #addrModalKeypad button {
+    font-size: 15px; font-weight: 600; padding: 8px 0; border-radius: 8px;
+    border: 1px solid var(--border); background: #262b35; color: var(--text);
+  }
+  #addrModalKeypad button:active { background: #2f3542; }
   #addrModalButtons { display: flex; gap: 10px; }
   #addrModalButtons button { flex: 1 1 auto; }
   #homeView {
@@ -347,7 +353,21 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 <div id="addrModalOverlay">
   <div id="addrModalCard">
     <div id="addrModalLabel">Address (1-3 digits):</div>
-    <input id="addrModalInput" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off">
+    <input id="addrModalInput" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" readonly>
+    <div id="addrModalKeypad">
+      <button type="button" class="keypadBtn" data-digit="1">1</button>
+      <button type="button" class="keypadBtn" data-digit="2">2</button>
+      <button type="button" class="keypadBtn" data-digit="3">3</button>
+      <button type="button" class="keypadBtn" data-digit="4">4</button>
+      <button type="button" class="keypadBtn" data-digit="5">5</button>
+      <button type="button" class="keypadBtn" data-digit="6">6</button>
+      <button type="button" class="keypadBtn" data-digit="7">7</button>
+      <button type="button" class="keypadBtn" data-digit="8">8</button>
+      <button type="button" class="keypadBtn" data-digit="9">9</button>
+      <button type="button" id="addrModalClear">C</button>
+      <button type="button" class="keypadBtn" data-digit="0">0</button>
+      <button type="button" id="addrModalBackspace">&#9003;</button>
+    </div>
     <div id="addrModalButtons">
       <button id="addrModalCancel">Cancel</button>
       <button id="addrModalOk" class="primary">OK</button>
@@ -536,22 +556,38 @@ let lastLedAddress = null;
 // window.prompt() always opens the phone's default full QWERTY keyboard —
 // there's no way to tell a native prompt() dialog to show the numeric
 // layout instead, so every address entry needed a manual tap to switch to
-// "123" first. A real <input inputmode="numeric"> opens the numeric keypad
-// immediately, so this modal replaces every window.prompt() used for a
-// device address.
+// "123" first. Rather than fight the OS keyboard (its own suggestion bar/
+// GIF/clipboard/mic row, and its habit of pushing a centered modal down
+// underneath itself once it opens), the input is readonly — tapping it
+// never summons any system keyboard — and digits come from our own small
+// keypad right in the card instead.
 const addrModalOverlayEl = document.getElementById('addrModalOverlay');
 const addrModalLabelEl = document.getElementById('addrModalLabel');
 const addrModalInputEl = document.getElementById('addrModalInput');
+const addrModalKeypadEl = document.getElementById('addrModalKeypad');
+const addrModalClearBtn = document.getElementById('addrModalClear');
+const addrModalBackspaceBtn = document.getElementById('addrModalBackspace');
 const addrModalCancelBtn = document.getElementById('addrModalCancel');
 const addrModalOkBtn = document.getElementById('addrModalOk');
+
+addrModalKeypadEl.addEventListener('click', (e) => {
+  const digitBtn = e.target.closest('.keypadBtn');
+  if (digitBtn && addrModalInputEl.value.length < 3) {
+    addrModalInputEl.value += digitBtn.dataset.digit;
+  }
+});
+addrModalBackspaceBtn.addEventListener('click', () => {
+  addrModalInputEl.value = addrModalInputEl.value.slice(0, -1);
+});
+addrModalClearBtn.addEventListener('click', () => {
+  addrModalInputEl.value = '';
+});
 
 function promptNumericAddress(message, defaultVal) {
   return new Promise((resolve) => {
     addrModalLabelEl.textContent = message;
     addrModalInputEl.value = defaultVal;
     addrModalOverlayEl.classList.add('open');
-    addrModalInputEl.focus();
-    addrModalInputEl.select();
 
     function cleanup() {
       addrModalOverlayEl.classList.remove('open');
