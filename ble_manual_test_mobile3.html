@@ -139,28 +139,28 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     /* White card — against the app's dark theme this stands out clearly,
        instead of blending into the dim overlay like a dark card would. */
     background: #ffffff; border: 1px solid #d7d9de; border-radius: 14px;
-    padding: 18px; width: 100%; max-width: 280px;
+    padding: 14px; width: 100%; max-width: 280px;
   }
-  #addrModalLabel { font-size: 14px; color: #5b5f68; margin-bottom: 10px; }
+  #addrModalLabel { font-size: 13px; color: #5b5f68; margin-bottom: 6px; }
   #addrModalInput {
-    width: 100%; font-size: 17px; font-weight: 600; text-align: center; padding: 7px;
+    width: 100%; font-size: 15px; font-weight: 600; text-align: center; padding: 5px;
     border-radius: 8px; border: 1px solid #d7d9de; background: #f1f2f5; color: #111318;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
   }
   /* Own digit pad instead of the OS keyboard — the input is readonly, so
      tapping it never summons the system keyboard (with its suggestion bar,
      GIF/clipboard/mic icons) in the first place, and we get to lay the
      digits out exactly where/how we want, right under the field. */
   #addrModalKeypad {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px;
   }
   #addrModalKeypad button {
-    font-size: 15px; font-weight: 600; padding: 8px 0; border-radius: 8px;
+    font-size: 14px; font-weight: 600; padding: 6px 0; border-radius: 8px;
     border: 1px solid var(--border); background: #262b35; color: var(--text);
   }
   #addrModalKeypad button:active { background: #2f3542; }
   #addrModalButtons { display: flex; gap: 10px; }
-  #addrModalButtons button { flex: 1 1 auto; }
+  #addrModalButtons button { flex: 1 1 auto; padding: 7px 14px; font-size: 13px; }
   #addrModalButtons button:not(.primary) {
     background: #262b35; border-color: var(--border); color: var(--text);
   }
