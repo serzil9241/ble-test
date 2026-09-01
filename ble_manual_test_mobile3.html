@@ -128,7 +128,13 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
      dialog with no control over the keyboard shown. */
   #addrModalOverlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-    align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+    /* align to the top, not centered — a centered card gets pushed down
+       toward/under the on-screen keyboard once it opens (the keyboard eats
+       the bottom of the viewport, "fixed" positioning doesn't know that),
+       cropping the Cancel/OK row. Anchoring near the top keeps the whole
+       card comfortably above where a keyboard could reach. */
+    align-items: flex-start; justify-content: center; z-index: 1000; padding: 16px;
+    padding-top: 72px;
   }
   #addrModalOverlay.open { display: flex; }
   #addrModalCard {
