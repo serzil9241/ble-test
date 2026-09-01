@@ -1001,6 +1001,7 @@ function tryParseOneDeviceAnswer(text) {
   const dm = ONE_DEVICE_RE.exec(text);
   if (dm) {
     oneAddrLineEl.textContent = `Address = ${dm[1]}`;
+    oneAddrLineEl.style.display = '';
     oneValueLineEl.textContent = `Value = ${dm[2]}`;
     oneValueLineEl.style.display = '';
     oneVersionLineEl.textContent = `Version = ${dm[3]}`;
