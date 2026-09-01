@@ -503,14 +503,14 @@ clearLogBtn.addEventListener('click', () => { rawLogEl.innerHTML = ''; });
 // "run all devices"/"get device" left running doesn't keep going in the
 // background just because you navigated away from its screen.
 function resetOneView() {
-  oneAddrLineEl.textContent = 'Address = —';
-  oneAddrLineEl.style.display = '';
-  oneValueLineEl.textContent = 'Value = —';
-  oneValueLineEl.style.display = '';
-  oneVersionLineEl.textContent = 'Version = —';
-  oneVersionLineEl.style.display = '';
-  oneTempLineEl.textContent = 'Temp = — °C';
-  oneTempLineEl.style.display = '';
+  // Hidden, not shown as "Address = —" etc. — nothing at all until the real
+  // reply for this device actually arrives, same reasoning as the icon
+  // below: a placeholder dash still implies "this is what's here", when the
+  // truth is we don't know yet.
+  oneAddrLineEl.style.display = 'none';
+  oneValueLineEl.style.display = 'none';
+  oneVersionLineEl.style.display = 'none';
+  oneTempLineEl.style.display = 'none';
   // Hidden (not just blanked) until a real answer sets its text via Type —
   // otherwise the previous device's icon stays on screen since only the
   // text lines above get cleared here.
@@ -991,6 +991,7 @@ const DEVICE_TYPE_ICON_TEXT = {
 function tryParseOneDeviceAnswer(text) {
   if (TR_COM_RE.test(text)) {
     oneAddrLineEl.textContent = 'Address = Not Connected';
+    oneAddrLineEl.style.display = '';
     oneValueLineEl.style.display = 'none';
     oneVersionLineEl.style.display = 'none';
     oneTempLineEl.style.display = 'none';
