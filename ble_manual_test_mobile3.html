@@ -580,23 +580,36 @@ const addrModalBackspaceBtn = document.getElementById('addrModalBackspace');
 const addrModalCancelBtn = document.getElementById('addrModalCancel');
 const addrModalOkBtn = document.getElementById('addrModalOk');
 
+// True right after the modal opens (or Clear is tapped): the field is
+// showing the suggested default, untouched — the first digit typed should
+// replace it (like a selected native-input value would), not tack on
+// after it. Any further digit, or Backspace, edits in place as normal.
+let addrModalIsFreshValue = true;
+
 addrModalKeypadEl.addEventListener('click', (e) => {
   const digitBtn = e.target.closest('.keypadBtn');
-  if (digitBtn && addrModalInputEl.value.length < 3) {
+  if (!digitBtn) return;
+  if (addrModalIsFreshValue) {
+    addrModalInputEl.value = digitBtn.dataset.digit;
+    addrModalIsFreshValue = false;
+  } else if (addrModalInputEl.value.length < 3) {
     addrModalInputEl.value += digitBtn.dataset.digit;
   }
 });
 addrModalBackspaceBtn.addEventListener('click', () => {
   addrModalInputEl.value = addrModalInputEl.value.slice(0, -1);
+  addrModalIsFreshValue = false;
 });
 addrModalClearBtn.addEventListener('click', () => {
   addrModalInputEl.value = '';
+  addrModalIsFreshValue = false;
 });
 
 function promptNumericAddress(message, defaultVal) {
   return new Promise((resolve) => {
     addrModalLabelEl.textContent = message;
     addrModalInputEl.value = defaultVal;
+    addrModalIsFreshValue = true;
     addrModalOverlayEl.classList.add('open');
 
     function cleanup() {
