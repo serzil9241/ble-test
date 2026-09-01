@@ -120,6 +120,29 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   }
   .quickCmdsRow button:active { background: rgba(77,166,255,0.3); }
   .quickCmdsRow button:disabled { background: transparent; border-color: var(--border); color: var(--muted); opacity: 1; }
+  /* Address-entry modal — replaces window.prompt(), which always opens the
+     default full QWERTY keyboard on mobile (needs a manual switch to the
+     "123" numeric layout, slow for something that's always just digits).
+     inputmode="numeric" on a real <input> opens the numeric keypad right
+     away — window.prompt() can't be told to do that, it's a native OS
+     dialog with no control over the keyboard shown. */
+  #addrModalOverlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+  }
+  #addrModalOverlay.open { display: flex; }
+  #addrModalCard {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px; width: 100%; max-width: 280px;
+  }
+  #addrModalLabel { font-size: 14px; color: var(--muted); margin-bottom: 10px; }
+  #addrModalInput {
+    width: 100%; font-size: 24px; font-weight: 600; text-align: center; padding: 10px;
+    border-radius: 8px; border: 1px solid var(--border); background: #262b35; color: var(--text);
+    margin-bottom: 14px;
+  }
+  #addrModalButtons { display: flex; gap: 10px; }
+  #addrModalButtons button { flex: 1 1 auto; }
   #homeView {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start;
     display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px;
@@ -315,6 +338,17 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   </div>
 </div>
 
+<div id="addrModalOverlay">
+  <div id="addrModalCard">
+    <div id="addrModalLabel">Address (1-3 digits):</div>
+    <input id="addrModalInput" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off">
+    <div id="addrModalButtons">
+      <button id="addrModalCancel">Cancel</button>
+      <button id="addrModalOk" class="primary">OK</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const DEVICE_NAME_PREFIX = "PROG7000";
 const SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb";
@@ -492,10 +526,56 @@ backFromCommand.addEventListener('click', () => showView('loop'));
 // beats the scan's Same Address, which beats the plain default of 1.
 let lastLedAddress = null;
 
-function promptForDeviceAddress(message) {
+// ---- Address entry modal ----
+// window.prompt() always opens the phone's default full QWERTY keyboard —
+// there's no way to tell a native prompt() dialog to show the numeric
+// layout instead, so every address entry needed a manual tap to switch to
+// "123" first. A real <input inputmode="numeric"> opens the numeric keypad
+// immediately, so this modal replaces every window.prompt() used for a
+// device address.
+const addrModalOverlayEl = document.getElementById('addrModalOverlay');
+const addrModalLabelEl = document.getElementById('addrModalLabel');
+const addrModalInputEl = document.getElementById('addrModalInput');
+const addrModalCancelBtn = document.getElementById('addrModalCancel');
+const addrModalOkBtn = document.getElementById('addrModalOk');
+
+function promptNumericAddress(message, defaultVal) {
+  return new Promise((resolve) => {
+    addrModalLabelEl.textContent = message;
+    addrModalInputEl.value = defaultVal;
+    addrModalOverlayEl.classList.add('open');
+    addrModalInputEl.focus();
+    addrModalInputEl.select();
+
+    function cleanup() {
+      addrModalOverlayEl.classList.remove('open');
+      addrModalOkBtn.removeEventListener('click', onOk);
+      addrModalCancelBtn.removeEventListener('click', onCancel);
+      addrModalInputEl.removeEventListener('keydown', onKeydown);
+    }
+    function onOk() {
+      const value = addrModalInputEl.value;
+      cleanup();
+      resolve(value);
+    }
+    function onCancel() {
+      cleanup();
+      resolve(null);
+    }
+    function onKeydown(e) {
+      if (e.key === 'Enter') onOk();
+      else if (e.key === 'Escape') onCancel();
+    }
+    addrModalOkBtn.addEventListener('click', onOk);
+    addrModalCancelBtn.addEventListener('click', onCancel);
+    addrModalInputEl.addEventListener('keydown', onKeydown);
+  });
+}
+
+async function promptForDeviceAddress(message) {
   const defaultVal = (lastLedAddress !== null) ? lastLedAddress
     : (lastSameAddress !== null) ? lastSameAddress : '1';
-  const input = window.prompt(message, defaultVal);
+  const input = await promptNumericAddress(message, defaultVal);
   if (input === null) return null; // cancelled
 
   const trimmed = input.trim();
@@ -512,13 +592,13 @@ function promptForDeviceAddress(message) {
 // "addr<N>opc<N>" command CommandParser already understands
 // (Prog7000_App.c, WORK_STATE_SEND_COMMANDS) — no repeat count given, so
 // it fires once and returns to idle.
-ledOnBtn.addEventListener('click', () => {
-  const addr = promptForDeviceAddress('Device address for LED ON:');
+ledOnBtn.addEventListener('click', async () => {
+  const addr = await promptForDeviceAddress('Device address for LED ON:');
   if (addr === null) return;
   sendText(`addr${addr}opc2`);
 });
-ledOffBtn.addEventListener('click', () => {
-  const addr = promptForDeviceAddress('Device address for LED OFF:');
+ledOffBtn.addEventListener('click', async () => {
+  const addr = await promptForDeviceAddress('Device address for LED OFF:');
   if (addr === null) return;
   sendText(`addr${addr}opc3`);
 });
@@ -1052,9 +1132,9 @@ document.querySelectorAll('.quickCmdBtn').forEach(btn => {
 // pre-filled with (last address actually sent) + 1, so repeatedly tapping
 // "OK" walks the address up by one each time; the value can still be
 // edited freely before sending.
-chAddrBtn.addEventListener('click', () => {
+chAddrBtn.addEventListener('click', async () => {
   const defaultVal = (lastChAddr === null) ? '1' : String(lastChAddr + 1);
-  const input = window.prompt('New address (1-3 digits):', defaultVal);
+  const input = await promptNumericAddress('New address (1-3 digits):', defaultVal);
   if (input === null) return; // cancelled
 
   const trimmed = input.trim();
