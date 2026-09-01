@@ -128,17 +128,23 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
      dialog with no control over the keyboard shown. */
   #addrModalOverlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-    align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+    /* Pinned near the bottom instead of centered — no OS keyboard opens
+       any more (see the readonly input below), so nothing crowds it down
+       there; this is just where it's easiest to see/reach. */
+    align-items: flex-end; justify-content: center; z-index: 1000;
+    padding: 16px; padding-bottom: 28px;
   }
   #addrModalOverlay.open { display: flex; }
   #addrModalCard {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    /* White card — against the app's dark theme this stands out clearly,
+       instead of blending into the dim overlay like a dark card would. */
+    background: #ffffff; border: 1px solid #d7d9de; border-radius: 14px;
     padding: 18px; width: 100%; max-width: 280px;
   }
-  #addrModalLabel { font-size: 14px; color: var(--muted); margin-bottom: 10px; }
+  #addrModalLabel { font-size: 14px; color: #5b5f68; margin-bottom: 10px; }
   #addrModalInput {
     width: 100%; font-size: 17px; font-weight: 600; text-align: center; padding: 7px;
-    border-radius: 8px; border: 1px solid var(--border); background: #262b35; color: var(--text);
+    border-radius: 8px; border: 1px solid #d7d9de; background: #f1f2f5; color: #111318;
     margin-bottom: 12px;
   }
   /* Own digit pad instead of the OS keyboard — the input is readonly, so
@@ -155,6 +161,10 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   #addrModalKeypad button:active { background: #2f3542; }
   #addrModalButtons { display: flex; gap: 10px; }
   #addrModalButtons button { flex: 1 1 auto; }
+  #addrModalButtons button:not(.primary) {
+    background: #262b35; border-color: var(--border); color: var(--text);
+  }
+  #addrModalButtons button:not(.primary):active { background: #2f3542; }
   #homeView {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start;
     display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px;
