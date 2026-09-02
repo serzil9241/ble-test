@@ -392,6 +392,17 @@ const CHAR_UUID    = "0000fff1-0000-1000-8000-00805f9b34fb";
 const KEEPALIVE_TEXT = "Hello prog7000";
 const KEEPALIVE_INTERVAL_MS = 3000;
 
+// Counts every non-empty received line (each ble_report_line() call on the
+// firmware side shows up as one) since the last keepalive went out, so the
+// count travels back to the firmware riding on the very next keepalive —
+// "Hello prog7000 lines=NN" — for a BLE_MIN_SEND_INTERVAL_MS loss test: run
+// the same repeating burst (e.g. the periodic SLC/24V/battery report) many
+// times at a given interval value and watch whether this number ever comes
+// in lower than the known-good baseline. strstr() on the firmware side only
+// checks for the "Hello prog7000" substring, so the trailing count doesn't
+// need any firmware change to keep being recognized as a keepalive.
+let linesSinceLastKeepalive = 0;
+
 let device = null, server = null, characteristic = null;
 let wakeLock = null;
 
@@ -769,6 +780,11 @@ function handleNotification(bytes) {
     text = Array.from(decoded).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
   }
   log(text, 'rx'); // console only now — see log()
+  // A single notification can carry more than one \r\n-separated
+  // ble_report_line() line batched together — count each one individually,
+  // not just the notification event, so the total actually reflects how
+  // many lines the firmware sent (see linesSinceLastKeepalive above).
+  linesSinceLastKeepalive += text.split(/\r\n|\r|\n/).filter(line => line.trim().length > 0).length;
   tryParseBattery(text);
   tryParseOneDeviceAnswer(text);
   tryParseSlcInfo(text);
@@ -1228,9 +1244,13 @@ function startKeepalive() {
   stopKeepaliveTimer();
   keepaliveTimer = setInterval(async () => {
     if (!keepaliveEnabled || !characteristic) return;
-    const { payload } = textToHexAsciiPayload(KEEPALIVE_TEXT);
+    const lineCount = linesSinceLastKeepalive;
+    linesSinceLastKeepalive = 0;
+    const keepaliveText = `${KEEPALIVE_TEXT} lines=${lineCount}`;
+    const { payload } = textToHexAsciiPayload(keepaliveText);
     try {
       await queueGattWrite(payload);
+      log(`[Keepalive] ${lineCount} lines received since last keepalive`, 'sys');
     } catch (err) {
       log(`[Keepalive] write failed — link is down: ${err}`, 'err');
       // Same reasoning as in sendText()'s catch — a write failure is the
@@ -1266,7 +1286,9 @@ disconnectBtn.addEventListener('click', disconnect);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !characteristic) return;
   if (!wakeLock) acquireWakeLock(); // the lock is auto-released whenever the tab was hidden
-  const { payload } = textToHexAsciiPayload(KEEPALIVE_TEXT);
+  const lineCount = linesSinceLastKeepalive;
+  linesSinceLastKeepalive = 0;
+  const { payload } = textToHexAsciiPayload(`${KEEPALIVE_TEXT} lines=${lineCount}`);
   queueGattWrite(payload).catch((err) => {
     log(`[Keepalive] write failed after resume — link is down: ${err}`, 'err');
     onDisconnected();
