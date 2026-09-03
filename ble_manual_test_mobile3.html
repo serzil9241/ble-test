@@ -305,18 +305,18 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 </div>
 
 <div id="homeView">
-  <button id="tileOneDevice" class="tileBtn" disabled>One device</button>
-  <button id="tileLoopDevices" class="tileBtn" disabled>Loop devices</button>
+  <button id="tileOneDevice" class="tileBtn" disabled>One Device</button>
+  <button id="tileLoopDevices" class="tileBtn" disabled>Loop Devices</button>
 </div>
 
 <div id="loopView" style="display:none">
   <div class="viewHeader">
     <button id="backFromLoop">&larr; Back</button>
-    <h2>Loop devices</h2>
+    <h2>Loop Devices</h2>
   </div>
   <div class="quickCmdsRow">
-    <button class="quickCmdBtn" data-cmd="get all devices">get all devices</button>
-    <button class="quickCmdBtn" data-cmd="run all devices">run all devices</button>
+    <button class="quickCmdBtn" data-cmd="get all devices">Get All Devices</button>
+    <button class="quickCmdBtn" data-cmd="run all devices">Run All Devices</button>
     <button id="viewAllDevicesBtn" class="quickCmdBtn">View All Devices</button>
     <button id="commandBtn" class="quickCmdBtn">Command</button>
   </div>
@@ -347,7 +347,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 <div id="oneView" style="display:none">
   <div class="viewHeader">
     <button id="backFromOne">&larr; Back</button>
-    <h2>One device</h2>
+    <h2>One Device</h2>
   </div>
   <div class="quickCmdsRow">
     <button id="chAddrBtn" class="quickCmdBtn">change addr</button>
@@ -797,6 +797,15 @@ ledOffBtn.addEventListener('click', async () => {
   if (addr === null) return;
   sendText(`addr${addr}opc3`);
 });
+
+// Stop/Continue already send their command via the generic quickCmdBtn
+// handler below (data-cmd) — this just adds the "and go back to Loop
+// devices" part on top, since after either one there's nothing left to do
+// on the Command screen.
+const cmdStopBtn = document.getElementById('cmdStopBtn');
+const cmdContinueBtn = document.getElementById('cmdContinueBtn');
+cmdStopBtn.addEventListener('click', () => showView('loop'));
+cmdContinueBtn.addEventListener('click', () => showView('loop'));
 
 backFromLoop.addEventListener('click', () => {
   sendText('stop');
