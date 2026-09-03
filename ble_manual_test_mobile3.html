@@ -237,6 +237,18 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     border: 1px solid var(--border); background: #12151b; color: var(--text);
   }
   #keepaliveBtn.paused { color: var(--warn); border-color: var(--warn); }
+  /* Scan progress bar — address / 127, updated on every "Receive ADDR=..."
+     line during "get all devices"/"run all devices" (same regex the
+     Address/Value lines above it already use, just also driving a width
+     instead of only text). */
+  #loopScanProgress {
+    height: 6px; border-radius: 3px; background: var(--border);
+    overflow: hidden; margin: 2px 0 8px 0;
+  }
+  #loopScanProgressFill {
+    height: 100%; width: 0%; background: var(--accent);
+    transition: width 0.15s linear;
+  }
 </style>
 </head>
 <body>
@@ -289,6 +301,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   </div>
   <div id="loopSpacer">
     <div id="loopAddrLine" style="display:none">Address = —</div>
+    <div id="loopScanProgress" style="display:none"><div id="loopScanProgressFill"></div></div>
     <div id="loopValueLine" style="display:none">Value = —</div>
     <div id="loopTransmitLine" style="display:none">Total transmit = —</div>
     <div id="loopRecErrorLine" style="display:none">receive error = —</div>
@@ -471,6 +484,8 @@ const v24InfoEl = document.getElementById('v24Info');
 const v24StatusLineEl = document.getElementById('v24StatusLine');
 const v24VoltsAmpsLineEl = document.getElementById('v24VoltsAmpsLine');
 const loopAddrLineEl = document.getElementById('loopAddrLine');
+const loopScanProgressEl = document.getElementById('loopScanProgress');
+const loopScanProgressFillEl = document.getElementById('loopScanProgressFill');
 const loopValueLineEl = document.getElementById('loopValueLine');
 const loopTransmitLineEl = document.getElementById('loopTransmitLine');
 const loopRecErrorLineEl = document.getElementById('loopRecErrorLine');
@@ -543,6 +558,8 @@ function resetLoopView() {
   renderV24VoltsAmps();
   loopAddrLineEl.textContent = 'Address = —';
   loopAddrLineEl.style.display = 'none';
+  loopScanProgressFillEl.style.width = '0%';
+  loopScanProgressEl.style.display = 'none';
   loopValueLineEl.textContent = 'Value = —';
   loopValueLineEl.style.display = 'none';
   loopTransmitLineEl.textContent = 'Total transmit = —';
@@ -855,6 +872,7 @@ function tryParseLoopScanInfo(text) {
   const fm = FOUND_DEVICES_RE.exec(text);
   if (fm) {
     loopAddrLineEl.style.display = 'none';
+    loopScanProgressEl.style.display = 'none';
     loopValueLineEl.style.display = 'none';
     clearLoopFoundLines();
     loopFoundInfoEl.style.display = 'flex';
@@ -884,6 +902,12 @@ function tryParseLoopScanInfo(text) {
   if (dm) {
     loopAddrLineEl.textContent = `Address = ${dm[1]}`;
     loopAddrLineEl.style.display = '';
+    // Loop addresses run 1-127 (Prog7000_App.c's own scan loop, "for (i = 1;
+    // i < 128; i++)") — same address this line already displays, just also
+    // driving how far along the bar is.
+    const scanPercent = Math.min(100, Math.max(0, (Number(dm[1]) / 127) * 100));
+    loopScanProgressFillEl.style.width = `${scanPercent}%`;
+    loopScanProgressEl.style.display = '';
     loopValueLineEl.textContent = `Value = ${dm[3]}`;
     loopValueLineEl.style.display = '';
   }
@@ -1196,6 +1220,8 @@ document.querySelectorAll('.quickCmdBtn').forEach(btn => {
       loopFoundMoreHintEl.style.display = 'none';
       loopAddrLineEl.textContent = 'Address = —';
       loopAddrLineEl.style.display = '';
+      loopScanProgressFillEl.style.width = '0%';
+      loopScanProgressEl.style.display = '';
       loopValueLineEl.textContent = 'Value = —';
       loopValueLineEl.style.display = '';
       loopTransmitLineEl.textContent = 'Total transmit = —';
