@@ -169,7 +169,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start;
     display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px;
   }
-  #loopView, #oneView, #logView, #commandView {
+  #loopView, #oneView, #logView, #commandView, #deviceListView {
     flex: 1 1 auto; min-height: 0; overflow: hidden;
     display: flex; flex-direction: column;
   }
@@ -184,6 +184,17 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   .logLine.sys { color: var(--muted); }
   .logLine.err { color: var(--err); }
   .logLine.warn { color: var(--warn); }
+  #deviceListInfo {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    padding: 10px 12px;
+  }
+  #deviceListSummary { font-size: 14px; color: var(--muted); margin-bottom: 10px; }
+  .deviceListLine {
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+    font-size: 15px; display: flex; justify-content: space-between; gap: 12px;
+  }
+  .deviceListLine .devAddr { font-weight: 600; }
+  .deviceListLine .devType { color: var(--muted); }
   .tileBtn {
     aspect-ratio: 1 / 1; border-radius: 16px; border: 1.5px solid var(--accent);
     background: rgba(77,166,255,0.1); color: var(--text); font-size: 18px; font-weight: 700;
@@ -289,6 +300,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     <button class="quickCmdBtn" data-cmd="get all devices">get all devices</button>
     <button class="quickCmdBtn" data-cmd="run all devices">run all devices</button>
     <button class="quickCmdBtn" data-cmd="stop">stop</button>
+    <button id="viewAllDevicesBtn" class="quickCmdBtn">View All Devices</button>
     <button id="commandBtn" class="quickCmdBtn">Command</button>
   </div>
   <div id="slcInfo" style="display:none">
@@ -370,6 +382,16 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <div class="quickCmdsRow">
     <button id="ledOnBtn" class="quickCmdBtn">Led ON</button>
     <button id="ledOffBtn" class="quickCmdBtn">Led OFF</button>
+  </div>
+</div>
+
+<div id="deviceListView" style="display:none">
+  <div class="viewHeader">
+    <button id="backFromDeviceList">&larr; Back</button>
+    <h2>All devices</h2>
+  </div>
+  <div id="deviceListInfo">
+    <div id="deviceListSummary">Requesting…</div>
   </div>
 </div>
 
@@ -469,6 +491,11 @@ const rawLogEl = document.getElementById('rawLog');
 const commandView = document.getElementById('commandView');
 const commandBtn = document.getElementById('commandBtn');
 const backFromCommand = document.getElementById('backFromCommand');
+const deviceListView = document.getElementById('deviceListView');
+const viewAllDevicesBtn = document.getElementById('viewAllDevicesBtn');
+const backFromDeviceList = document.getElementById('backFromDeviceList');
+const deviceListInfoEl = document.getElementById('deviceListInfo');
+const deviceListSummaryEl = document.getElementById('deviceListSummary');
 const ledOnBtn = document.getElementById('ledOnBtn');
 const ledOffBtn = document.getElementById('ledOffBtn');
 const oneAddrLineEl = document.getElementById('oneAddrLine');
@@ -512,6 +539,7 @@ function showView(view) {
   oneView.style.display = (view === 'one') ? '' : 'none';
   logView.style.display = (view === 'log') ? '' : 'none';
   commandView.style.display = (view === 'command') ? '' : 'none';
+  deviceListView.style.display = (view === 'deviceList') ? '' : 'none';
 }
 
 // "Log" is reachable from any screen and returns to whichever one you were
@@ -519,7 +547,8 @@ function showView(view) {
 logBtn.addEventListener('click', () => {
   viewBeforeLog = loopView.style.display !== 'none' ? 'loop'
     : oneView.style.display !== 'none' ? 'one'
-    : commandView.style.display !== 'none' ? 'command' : 'home';
+    : commandView.style.display !== 'none' ? 'command'
+    : deviceListView.style.display !== 'none' ? 'deviceList' : 'home';
   showView('log');
 });
 backFromLog.addEventListener('click', () => showView(viewBeforeLog));
@@ -584,6 +613,23 @@ tileLoopDevices.addEventListener('click', () => {
 });
 commandBtn.addEventListener('click', () => showView('command'));
 backFromCommand.addEventListener('click', () => showView('loop'));
+
+// Keeps deviceListSummaryEl itself (only clears the per-device rows added
+// after it) — same reasoning as clearLoopFoundLines(): innerHTML-replacing
+// the whole container would detach the const reference to the summary div.
+function resetDeviceListView() {
+  Array.from(deviceListInfoEl.children).forEach((child) => {
+    if (child !== deviceListSummaryEl) child.remove();
+  });
+  deviceListSummaryEl.textContent = 'Requesting…';
+}
+
+viewAllDevicesBtn.addEventListener('click', () => {
+  showView('deviceList');
+  resetDeviceListView();
+  sendText('view all devices');
+});
+backFromDeviceList.addEventListener('click', () => showView('loop'));
 
 // Priority: whatever address was last actually used for LED ON/OFF (either
 // one — so OFF picks up an address you just typed for ON, and vice versa)
@@ -807,6 +853,7 @@ function handleNotification(bytes) {
   tryParseSlcInfo(text);
   tryParseV24Info(text);
   tryParseLoopScanInfo(text);
+  tryParseDeviceList(text);
 }
 
 // Reuses the same "Receive ADDR=... OPC=... DATA=..." / "tr_com = N" shapes
@@ -910,6 +957,69 @@ function tryParseLoopScanInfo(text) {
     loopScanProgressEl.style.display = '';
     loopValueLineEl.textContent = `Value = ${dm[3]}`;
     loopValueLineEl.style.display = '';
+  }
+}
+
+// "View All Devices" — new command, sent on demand (not part of the
+// regular "get all devices" scan output). Firmware just re-reports
+// my_main_state.auto_prog.device_type[1..127], which the scan already
+// populated — so this shows the last scan's results without re-scanning.
+//   "Device List Start"
+//   "Device List Addr=5 Type=4"   (one line per populated address)
+//   "Device List End 12"          (12 = total device count)
+const DEVICE_LIST_START_RE = /Device List Start/;
+const DEVICE_LIST_LINE_RE = /Device List Addr=(\d+)\s+Type=(\d+)/;
+const DEVICE_LIST_END_RE = /Device List End\s+(\d+)/;
+
+// Raw device-type byte -> label, mirrors the full classification switch in
+// Prog7000_App.c (~line 2086) — same codes as DEVICE_TYPE_ICON_TEXT above,
+// just covering every case (that map only needs the 4 we have icons for).
+const DEVICE_TYPE_FULL_LABELS = {
+  2:  'Heat Detector',
+  4:  'Photo Detector',
+  5:  'Input Module',
+  6:  'Switch',
+  7:  'Power Supply',
+  9:  'Gas Detector',
+  10: 'Gas Detector',
+  11: 'Gas Detector',
+  12: 'Gas Detector',
+  15: 'Isolator',
+  16: 'CO & Heat Detector',
+  19: 'Photo & Heat Detector',
+  20: 'Photo & Heat Detector',
+  21: 'Photo & Heat Detector',
+  31: 'Exting. Control',
+  32: 'SCM',
+  84: 'Extinguisher',
+  85: 'Output Module',
+};
+
+function appendDeviceListLine(addr, type) {
+  const div = document.createElement('div');
+  div.className = 'deviceListLine';
+  const label = DEVICE_TYPE_FULL_LABELS[type] || `Type ${type}`;
+  div.innerHTML = `<span class="devAddr">Addr ${addr}</span><span class="devType">${label}</span>`;
+  deviceListInfoEl.appendChild(div);
+}
+
+function tryParseDeviceList(text) {
+  if (DEVICE_LIST_START_RE.test(text)) {
+    resetDeviceListView();
+    deviceListSummaryEl.textContent = 'Requesting…';
+    return;
+  }
+  const lm = DEVICE_LIST_LINE_RE.exec(text);
+  if (lm) {
+    appendDeviceListLine(Number(lm[1]), Number(lm[2]));
+    return;
+  }
+  const em = DEVICE_LIST_END_RE.exec(text);
+  if (em) {
+    const count = Number(em[1]);
+    deviceListSummaryEl.textContent = count > 0
+      ? `Total: ${count} device${count === 1 ? '' : 's'}`
+      : 'No devices found — run "get all devices" first';
   }
 }
 
