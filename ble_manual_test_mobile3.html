@@ -169,7 +169,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start;
     display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px;
   }
-  #loopView, #oneView, #logView, #commandView, #deviceListView {
+  #loopView, #oneView, #logView, #commandView, #deviceListView, #helpView {
     flex: 1 1 auto; min-height: 0; overflow: hidden;
     display: flex; flex-direction: column;
   }
@@ -199,6 +199,13 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
      right after the address instead of flush against the right side. */
   .deviceListLine .devType { color: var(--muted); flex: 1 1 auto; text-align: left; }
   .deviceListLine .devIcon { flex: 0 0 auto; }
+  #helpInfo { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 10px 12px; }
+  .helpLine {
+    padding: 14px 0; border-bottom: 1px solid var(--border);
+    font-size: 16px; display: flex; align-items: center; gap: 14px;
+  }
+  .helpLine .devType { flex: 1 1 auto; text-align: left; }
+  .helpLine .devIcon { flex: 0 0 auto; }
   .tileBtn {
     aspect-ratio: 1 / 1; border-radius: 16px; border: 1.5px solid var(--accent);
     background: rgba(77,166,255,0.1); color: var(--text); font-size: 18px; font-weight: 700;
@@ -275,6 +282,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <button id="disconnectBtn" disabled>Disconnect</button>
   <button id="keepaliveBtn" disabled>Keepalive: on</button>
   <button id="logBtn">Log</button>
+  <button id="helpBtn">Icons</button>
 </header>
 
 <div id="battRow" style="display:none" title="Waiting for a battery status report...">
@@ -347,24 +355,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
       <div id="oneTempLine">Temp = —</div>
     </div>
     <div id="oneDeviceIconWrap">
-      <svg id="oneDeviceIcon" viewBox="0 0 93 48" width="93" height="48">
-        <rect x="0" y="0" width="93" height="48" fill="#161616"/>
-        <path d="M3,3 L90,3 L90,13.5 L83.2,24 L9.8,24 L3,13.5 Z" fill="none" stroke="#fdf6e3" stroke-width="2.2"/>
-        <text id="oneDeviceIconText" x="46.5" y="18.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="0.3" fill="#fdf6e3">PHOTO</text>
-        <path d="M18,24 L75,24 L75,35 L73,38 L20,38 L18,35 Z" fill="none" stroke="#fdf6e3" stroke-width="1.8"/>
-        <g fill="#fdf6e3">
-          <rect x="21" y="28" width="3" height="7"/>
-          <rect x="27" y="28" width="3" height="7"/>
-          <rect x="33" y="28" width="3" height="7"/>
-          <rect x="39" y="28" width="3" height="7"/>
-          <rect x="45" y="28" width="3" height="7"/>
-          <rect x="51" y="28" width="3" height="7"/>
-          <rect x="57" y="28" width="3" height="7"/>
-          <rect x="63" y="28" width="3" height="7"/>
-          <rect x="69" y="28" width="3" height="7"/>
-        </g>
-        <path d="M58,38 L67,38 L62.5,44 Z" fill="#fdf6e3"/>
-      </svg>
+      <svg id="oneDeviceIcon" viewBox="0 0 93 48" width="93" height="48"></svg>
     </div>
   </div>
 </div>
@@ -397,6 +388,17 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <div id="deviceListInfo">
     <div id="deviceListSummary">Requesting…</div>
   </div>
+</div>
+
+<!-- Static reference — every device-type icon we have, with a label, so
+     they can all be reviewed/compared on the phone without needing a real
+     device of every type connected. Not tied to BLE data at all. -->
+<div id="helpView" style="display:none">
+  <div class="viewHeader">
+    <button id="backFromHelp">&larr; Back</button>
+    <h2>Icon reference</h2>
+  </div>
+  <div id="helpInfo"></div>
 </div>
 
 <div id="addrModalOverlay">
@@ -500,6 +502,10 @@ const viewAllDevicesBtn = document.getElementById('viewAllDevicesBtn');
 const backFromDeviceList = document.getElementById('backFromDeviceList');
 const deviceListInfoEl = document.getElementById('deviceListInfo');
 const deviceListSummaryEl = document.getElementById('deviceListSummary');
+const helpView = document.getElementById('helpView');
+const helpBtn = document.getElementById('helpBtn');
+const backFromHelp = document.getElementById('backFromHelp');
+const helpInfoEl = document.getElementById('helpInfo');
 const ledOnBtn = document.getElementById('ledOnBtn');
 const ledOffBtn = document.getElementById('ledOffBtn');
 const oneAddrLineEl = document.getElementById('oneAddrLine');
@@ -507,7 +513,7 @@ const oneValueLineEl = document.getElementById('oneValueLine');
 const oneVersionLineEl = document.getElementById('oneVersionLine');
 const oneTempLineEl = document.getElementById('oneTempLine');
 const oneDeviceIconWrapEl = document.getElementById('oneDeviceIconWrap');
-const oneDeviceIconTextEl = document.getElementById('oneDeviceIconText');
+const oneDeviceIconEl = document.getElementById('oneDeviceIcon');
 const slcInfoEl = document.getElementById('slcInfo');
 const slcStatusLineEl = document.getElementById('slcStatusLine');
 const slcVoltsAmpsLineEl = document.getElementById('slcVoltsAmpsLine');
@@ -544,6 +550,7 @@ function showView(view) {
   logView.style.display = (view === 'log') ? '' : 'none';
   commandView.style.display = (view === 'command') ? '' : 'none';
   deviceListView.style.display = (view === 'deviceList') ? '' : 'none';
+  helpView.style.display = (view === 'help') ? '' : 'none';
 }
 
 // "Log" is reachable from any screen and returns to whichever one you were
@@ -552,7 +559,8 @@ logBtn.addEventListener('click', () => {
   viewBeforeLog = loopView.style.display !== 'none' ? 'loop'
     : oneView.style.display !== 'none' ? 'one'
     : commandView.style.display !== 'none' ? 'command'
-    : deviceListView.style.display !== 'none' ? 'deviceList' : 'home';
+    : deviceListView.style.display !== 'none' ? 'deviceList'
+    : helpView.style.display !== 'none' ? 'help' : 'home';
   showView('log');
 });
 backFromLog.addEventListener('click', () => showView(viewBeforeLog));
@@ -634,6 +642,43 @@ viewAllDevicesBtn.addEventListener('click', () => {
   sendText('view all devices');
 });
 backFromDeviceList.addEventListener('click', () => showView('loop'));
+
+// One entry per unique icon/label — Gas (9-12) and Photo & Heat (19-21) each
+// collapse to a single representative code, since all four/three raw codes
+// in a group render identically. Not tied to BLE data — pure reference,
+// works with no device connected at all.
+const HELP_ICON_LIST = [
+  { type: 4,  label: 'Photo Detector' },
+  { type: 2,  label: 'Heat Detector' },
+  { type: 9,  label: 'Gas Detector' },
+  { type: 16, label: 'CO & Heat Detector' },
+  { type: 19, label: 'Photo & Heat Detector' },
+  { type: 5,  label: 'Input Module' },
+  { type: 6,  label: 'Switch' },
+  { type: 7,  label: 'Power Supply' },
+  { type: 15, label: 'Isolator' },
+  { type: 32, label: 'SCM' },
+  { type: 84, label: 'Extinguisher' },
+  { type: 31, label: 'Exting. Control' },
+  { type: 85, label: 'Output Module' },
+];
+
+function populateHelpView() {
+  if (helpInfoEl.children.length > 0) return; // built once, it's static
+  HELP_ICON_LIST.forEach(({ type, label }) => {
+    const div = document.createElement('div');
+    div.className = 'helpLine';
+    const iconMarkup = buildDeviceIconMarkup(type, 84, 44);
+    div.innerHTML = `${iconMarkup}<span class="devType">${label}</span>`;
+    helpInfoEl.appendChild(div);
+  });
+}
+
+helpBtn.addEventListener('click', () => {
+  populateHelpView();
+  showView('help');
+});
+backFromHelp.addEventListener('click', () => showView('home'));
 
 // Priority: whatever address was last actually used for LED ON/OFF (either
 // one — so OFF picks up an address you just typed for ON, and vice versa)
@@ -1003,30 +1048,23 @@ const DEVICE_TYPE_FULL_LABELS = {
 // here since a list needs many of them, not just one. viewBox stays 93x48
 // (the shape's own coordinate space); width/height scale the rendered size
 // down ~30% (93x48 -> 65x34) so a whole page of rows still fits.
-function buildDeviceIconMarkup(text, letterSpacing, width, height) {
-  return `<svg class="devIcon" viewBox="0 0 93 48" width="${width}" height="${height}">
-      <rect x="0" y="0" width="93" height="48" fill="#161616"/>
-      <path d="M3,3 L90,3 L90,13.5 L83.2,24 L9.8,24 L3,13.5 Z" fill="none" stroke="#fdf6e3" stroke-width="2.2"/>
-      <text x="46.5" y="18.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="${letterSpacing}" fill="#fdf6e3">${text}</text>
-      <path d="M18,24 L75,24 L75,35 L73,38 L20,38 L18,35 Z" fill="none" stroke="#fdf6e3" stroke-width="1.8"/>
-      <g fill="#fdf6e3">
-        <rect x="21" y="28" width="3" height="7"/><rect x="27" y="28" width="3" height="7"/><rect x="33" y="28" width="3" height="7"/>
-        <rect x="39" y="28" width="3" height="7"/><rect x="45" y="28" width="3" height="7"/><rect x="51" y="28" width="3" height="7"/>
-        <rect x="57" y="28" width="3" height="7"/><rect x="63" y="28" width="3" height="7"/><rect x="69" y="28" width="3" height="7"/>
-      </g>
-      <path d="M58,38 L67,38 L62.5,44 Z" fill="#fdf6e3"/>
-    </svg>`;
+// Wraps whatever DEVICE_ICON_MARKUP[type] returns in a sized <svg> — used
+// wherever a device icon is shown outside the One Device screen's own
+// full-size #oneDeviceIcon (list rows, the Help reference).
+function buildDeviceIconMarkup(type, width, height) {
+  const inner = DEVICE_ICON_MARKUP[type];
+  if (!inner) return '';
+  return `<svg class="devIcon" viewBox="0 0 93 48" width="${width}" height="${height}">${inner}</svg>`;
 }
 
 function appendDeviceListLine(addr, type) {
   const div = document.createElement('div');
   div.className = 'deviceListLine';
   const label = DEVICE_TYPE_FULL_LABELS[type] || `Type ${type}`;
-  // Only the 4 types with real icon artwork (DEVICE_TYPE_ICON_TEXT) get one
-  // drawn — same "no icon yet" rule as the One Device screen for anything
-  // else, rather than showing a blank/wrong picture.
-  const iconInfo = DEVICE_TYPE_ICON_TEXT[type];
-  const iconMarkup = iconInfo ? buildDeviceIconMarkup(iconInfo.text, iconInfo.letterSpacing, 65, 34) : '';
+  // Only types with real icon artwork (DEVICE_ICON_MARKUP) get one drawn —
+  // same "no icon yet" rule as the One Device screen for anything else,
+  // rather than showing a blank/wrong picture.
+  const iconMarkup = buildDeviceIconMarkup(type, 65, 34);
   div.innerHTML = `<span class="devAddr">Addr ${addr}</span><span class="devType">${label}</span>${iconMarkup}`;
   deviceListInfoEl.appendChild(div);
 }
@@ -1155,15 +1193,138 @@ const TR_COM_RE = /tr_com\s*=\s*(\d+)/;
 // Address and Value, are read from here now.
 const ONE_DEVICE_RE = /One Device Addr=(\d+)\s+Value=(\d+)\s+Version=(\d+)\s+Temp=(\d+)\s+Type=(\d+)/;
 
-// Raw device-type byte (Prog7000_App.c ~line 2026, e.g. CODE_HEAT=2,
-// CODE_PHOTOELECTRIC=4, CODE_GAS1=9, CODE_PHOTO_HEAT_A=19) -> which of our
-// four hand-drawn icon variants to show, per user-supplied mapping. Any
-// other Type value has no artwork yet, so the icon is left blank on purpose.
-const DEVICE_TYPE_ICON_TEXT = {
-  4:  { text: 'PHOTO',  letterSpacing: 0.3 }, // CODE_PHOTOELECTRIC
-  9:  { text: 'GAS',    letterSpacing: 0.3 }, // CODE_GAS1
-  2:  { text: 't° FIX', letterSpacing: 0 },   // CODE_HEAT
-  19: { text: 'P+t°',   letterSpacing: 0.3 }, // CODE_PHOTO_HEAT_A
+// ---- Device-type icon artwork ----
+// Two visual families, matching the real panel's own bitmaps (traced from
+// s_device.h / set_picture_LineDevice(), a different project's firmware —
+// the main system Prog7000 programs, not Prog7000 itself):
+//   - "detector" family (loop sensors: photo/heat/gas/CO&heat/photo+heat) —
+//     shared chamfered frame + dot-ladder + triangle, only the text differs.
+//   - every addressable module has its own distinct pictogram, hand-traced
+//     from that project's real bitmap arrays (_Isol1, _Power1, _Exting2,
+//     _ExtingContr2, _SCM1_AllModes, _Sw_AllModes, _ControlOut1_AllModes,
+//     _IN_ALL_MODES) — not just a text swap.
+// Raw device-type byte per Prog7000_App.c's own classification switch
+// (~line 2086, e.g. CODE_HEAT=2, CODE_PHOTOELECTRIC=4, CODE_GAS1=9) is the
+// lookup key into DEVICE_ICON_MARKUP below. Any Type not in that map has no
+// artwork yet, so the icon is left blank on purpose (never a wrong guess).
+const ICON_CREAM = '#fdf6e3';
+
+function detectorIconMarkup(text, letterSpacing) {
+  return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
+    <path d="M3,3 L90,3 L90,13.5 L83.2,24 L9.8,24 L3,13.5 Z" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2"/>
+    <text x="46.5" y="18.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="${letterSpacing}" fill="${ICON_CREAM}">${text}</text>
+    <path d="M18,24 L75,24 L75,35 L73,38 L20,38 L18,35 Z" fill="none" stroke="${ICON_CREAM}" stroke-width="1.8"/>
+    <g fill="${ICON_CREAM}">
+      <rect x="21" y="28" width="3" height="7"/><rect x="27" y="28" width="3" height="7"/><rect x="33" y="28" width="3" height="7"/>
+      <rect x="39" y="28" width="3" height="7"/><rect x="45" y="28" width="3" height="7"/><rect x="51" y="28" width="3" height="7"/>
+      <rect x="57" y="28" width="3" height="7"/><rect x="63" y="28" width="3" height="7"/><rect x="69" y="28" width="3" height="7"/>
+    </g>
+    <path d="M58,38 L67,38 L62.5,44 Z" fill="${ICON_CREAM}"/>`;
+}
+
+function isolatorIconMarkup() {
+  return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
+    <rect x="1.5" y="1.5" width="81" height="45" rx="2" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2"/>
+    <text x="42" y="19" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="1" fill="${ICON_CREAM}">ISOL</text>
+    <line x1="12" y1="38" x2="27" y2="38" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="54" y1="38" x2="69" y2="38" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M27,38 Q42,25 54,38" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>`;
+}
+
+function powerSupplyIconMarkup() {
+  return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
+    <rect x="1.5" y="1.5" width="81" height="45" rx="2" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2"/>
+    <text x="42" y="20" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="15" fill="${ICON_CREAM}">24V</text>
+    <line x1="15" y1="30" x2="69" y2="30" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="15" y1="37" x2="24" y2="37" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="30" y1="37" x2="39" y2="37" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="45" y1="37" x2="54" y2="37" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="60" y1="37" x2="69" y2="37" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>`;
+}
+
+function scmIconMarkup() {
+  return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
+    <rect x="1.5" y="1.5" width="90" height="45" rx="2" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2"/>
+    <text x="46.5" y="29" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="17" letter-spacing="1" fill="${ICON_CREAM}">SCM</text>`;
+}
+
+function switchIconMarkup() {
+  return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
+    <rect x="1.5" y="1.5" width="81" height="45" rx="2" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2"/>
+    <circle cx="27" cy="38" r="2.6" fill="${ICON_CREAM}"/>
+    <circle cx="63" cy="35" r="2.6" fill="${ICON_CREAM}"/>
+    <path d="M27,38 L58,17" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>`;
+}
+
+// Border with a gap on one side (only corner stubs there) instead of a
+// continuous rectangle — matches _ControlOut1_AllModes / _IN_ALL_MODES,
+// where the signal arrow pokes through that gap and beyond the frame edge.
+function bracketFrameMarkup() {
+  return `<path d="M78,3 L3,3 L3,45 L78,45 M78,9 L78,3 M78,45 L78,39" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+}
+
+function controlOutIconMarkup() {
+  // Output Module = Control Out (there's no separate "Output Module"
+  // pictogram on the real panel) — signal exits right through the gap.
+  return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
+    ${bracketFrameMarkup()}
+    <text x="36" y="29" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="15" letter-spacing="1" fill="${ICON_CREAM}">CTRL</text>
+    <path d="M66,24 L88,24 M81,17 L88,24 L81,31" fill="none" stroke="${ICON_CREAM}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+
+function inputModuleIconMarkup() {
+  // Same gapped frame as Control Out, mirrored — arrowhead points INTO the
+  // box (signal arriving), not away from it.
+  return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
+    ${bracketFrameMarkup()}
+    <path d="M5,24 L27,24 M20,17 L27,24 L20,31" fill="none" stroke="${ICON_CREAM}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+
+// Box + short horn + 3 sound rays — this is what _Exting2 actually decodes
+// to (confirmed pixel-by-pixel against the source array), not a canister —
+// user's own hand sketch of the real LCD icon matches this shape.
+function extinguisherIconMarkup() {
+  return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
+    <rect x="27" y="0" width="33" height="24" rx="1.5" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2"/>
+    <path d="M39,24 L39,33 L60,39 L60,27 Z" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linejoin="round"/>
+    <line x1="66" y1="30" x2="78" y2="30" stroke="${ICON_CREAM}" stroke-width="2" stroke-linecap="round"/>
+    <line x1="65" y1="24" x2="80" y2="18" stroke="${ICON_CREAM}" stroke-width="2" stroke-linecap="round"/>
+    <line x1="65" y1="36" x2="80" y2="42" stroke="${ICON_CREAM}" stroke-width="2" stroke-linecap="round"/>`;
+}
+
+function extingControlIconMarkup() {
+  // Same box+horn glyph as Extinguisher, shrunk, next to "CTRL" — matches
+  // _ExtingContr2's own layout (small pictogram + CTRL text in one frame).
+  return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
+    <rect x="1.5" y="1.5" width="90" height="45" rx="1.5" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2"/>
+    <rect x="4" y="4" width="15" height="13" rx="1" fill="none" stroke="${ICON_CREAM}" stroke-width="1.7"/>
+    <line x1="11" y1="17" x2="11" y2="21" stroke="${ICON_CREAM}" stroke-width="1.7"/>
+    <path d="M11,18 L11,24 L22,29 L22,13 Z" fill="none" stroke="${ICON_CREAM}" stroke-width="1.7" stroke-linejoin="round"/>
+    <line x1="27" y1="21" x2="33" y2="21" stroke="${ICON_CREAM}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="26" y1="15" x2="32" y2="10" stroke="${ICON_CREAM}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="26" y1="27" x2="32" y2="32" stroke="${ICON_CREAM}" stroke-width="1.5" stroke-linecap="round"/>
+    <text x="65" y="29" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="15" letter-spacing="1" fill="${ICON_CREAM}">CTRL</text>`;
+}
+
+const DEVICE_ICON_MARKUP = {
+  2:  detectorIconMarkup('t° FIX', 0),    // CODE_HEAT
+  4:  detectorIconMarkup('PHOTO', 0.3),   // CODE_PHOTOELECTRIC
+  5:  inputModuleIconMarkup(),            // CODE_INPUT_LINE
+  6:  switchIconMarkup(),                 // CODE_PUSH_BUTTON
+  7:  powerSupplyIconMarkup(),            // CODE_POWER_SUPLAY
+  9:  detectorIconMarkup('GAS', 0.3),     // CODE_GAS1
+  10: detectorIconMarkup('GAS', 0.3),     // CODE_GAS2
+  11: detectorIconMarkup('GAS', 0.3),     // CODE_GAS3
+  12: detectorIconMarkup('GAS', 0.3),     // CODE_GAS4
+  15: isolatorIconMarkup(),               // CODE_ISOLATOR
+  16: detectorIconMarkup('CO+t°', 0),     // CODE_CO_HEAT_A
+  19: detectorIconMarkup('P+t°', 0.3),    // CODE_PHOTO_HEAT_A
+  20: detectorIconMarkup('P+t°', 0.3),    // CODE_PHOTO_HEAT_B
+  21: detectorIconMarkup('P+t°', 0.3),    // CODE_PHOTO_HEAT_C
+  31: extingControlIconMarkup(),          // CODE_EXTING_CONTROL
+  32: scmIconMarkup(),                    // CODE_SMOKE_CONTROL_MODULE
+  84: extinguisherIconMarkup(),           // CODE_EXTINGUISHER_SP
+  85: controlOutIconMarkup(),             // CODE_SOUNDER
 };
 
 function tryParseOneDeviceAnswer(text) {
@@ -1186,10 +1347,9 @@ function tryParseOneDeviceAnswer(text) {
     oneVersionLineEl.style.display = '';
     oneTempLineEl.textContent = `Temp = ${dm[4]}°C`;
     oneTempLineEl.style.display = '';
-    const iconInfo = DEVICE_TYPE_ICON_TEXT[Number(dm[5])];
-    if (iconInfo) {
-      oneDeviceIconTextEl.textContent = iconInfo.text;
-      oneDeviceIconTextEl.setAttribute('letter-spacing', iconInfo.letterSpacing);
+    const iconMarkup = DEVICE_ICON_MARKUP[Number(dm[5])];
+    if (iconMarkup) {
+      oneDeviceIconEl.innerHTML = iconMarkup;
       oneDeviceIconWrapEl.style.display = '';
     } else {
       oneDeviceIconWrapEl.style.display = 'none';
