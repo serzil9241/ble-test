@@ -1249,17 +1249,16 @@ function scmIconMarkup() {
 }
 
 function switchIconMarkup() {
-  // Traced from _Sw_AllModes: two horizontal feet (contacts) at y=39, the
-  // diagonal blade running from the left foot's inner end up past the
-  // right foot, and — the part missed before — a separate small hook
-  // ("shoulder") tick sitting just above the right foot's inner end,
-  // disconnected from the main diagonal (row12, cols18-19 in the source).
+  // Traced from _Sw_AllModes: two horizontal feet (contacts) at y=39 and
+  // the diagonal blade from the left foot's inner end up past the right
+  // foot. No round line-caps here — those left small bulges at the ends
+  // that read as unwanted dots, and the separate shoulder tick near the
+  // right foot has been dropped, per user's mark-up on the render.
   return `<rect x="0" y="0" width="93" height="48" fill="#161616"/>
     <rect x="1.5" y="1.5" width="81" height="45" rx="2" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2"/>
-    <line x1="12" y1="39" x2="33" y2="39" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>
-    <line x1="54" y1="39" x2="72" y2="39" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>
-    <path d="M28.5,37.5 L52.5,25.5" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>
-    <path d="M60,33 L55,38.5" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2" stroke-linecap="round"/>`;
+    <line x1="12" y1="39" x2="33" y2="39" stroke="${ICON_CREAM}" stroke-width="2.2"/>
+    <line x1="54" y1="39" x2="72" y2="39" stroke="${ICON_CREAM}" stroke-width="2.2"/>
+    <path d="M28.5,37.5 L52.5,25.5" fill="none" stroke="${ICON_CREAM}" stroke-width="2.2"/>`;
 }
 
 // Border with a gap on one side (only corner stubs there) instead of a
