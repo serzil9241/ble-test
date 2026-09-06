@@ -1557,23 +1557,53 @@ const AUTH_CMD_RESPONSE  = 0xA2;
 const AUTH_CMD_OK        = 0xA3;
 const AUTH_CMD_FAIL      = 0xA4;
 
-// Resolves with the next raw notification frame on FFF2 — set right before
-// each auth write, cleared once consumed. Only one auth exchange is ever in
-// flight at a time (this screen is the only caller), so a single slot is
-// enough — no queue needed.
-let authNotifyResolve = null;
+// Resolves with the next decoded notification frame on FFF2 — set right
+// before each auth write, cleared once consumed. Only one auth exchange is
+// ever in flight at a time (this screen is the only caller), so a single
+// slot is enough — no queue needed.
+let authNotifyResolve = null, authNotifyTimer = null;
+const AUTH_REPLY_TIMEOUT_MS = 5000;
 
+// FFF2 is on the SAME hex-ASCII text path as FFF1 (ble.c's ble_data_msg_handle()
+// routes BLE_TYPE_ATTR_2 through convert_ascii_to_hex, exactly like ATTR_1) —
+// unlike FF01, which is genuinely raw binary. So auth bytes must go through
+// the same hex-encode/decode as textToHexAsciiPayload()/hexToBytes() above,
+// not raw writeValue().
 function handleAuthNotification(bytes) {
   if (!authNotifyResolve) return; // unexpected/stray — ignore
+  clearTimeout(authNotifyTimer);
   const resolve = authNotifyResolve;
   authNotifyResolve = null;
-  resolve(bytes);
+  const asciiStr = Array.from(bytes).map(b => String.fromCharCode(b)).join('').trim();
+  resolve(isHexString(asciiStr) ? hexToBytes(asciiStr) : new Uint8Array(0));
 }
 
+function writeHexEncodedToCharacteristic(char, bytes) {
+  let hex = '';
+  for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+  const payload = new TextEncoder().encode(hex.toUpperCase());
+  return char.writeValueWithoutResponse
+    ? char.writeValueWithoutResponse(payload)
+    : char.writeValue(payload); // older Chrome fallback, same as queueGattWrite()
+}
+
+// FF01 (file transfer) really is raw binary (BLE_FILE_RAW_BINARY's ISR
+// fast-path bypasses convert_ascii_to_hex entirely) — used as-is, unlike
+// the hex-encoded helper above.
 function writeToCharacteristic(char, bytes) {
   return char.writeValueWithoutResponse
     ? char.writeValueWithoutResponse(bytes)
-    : char.writeValue(bytes); // older Chrome fallback, same as queueGattWrite()
+    : char.writeValue(bytes);
+}
+
+function waitForAuthReply() {
+  return new Promise((resolve, reject) => {
+    authNotifyResolve = resolve;
+    authNotifyTimer = setTimeout(() => {
+      authNotifyResolve = null;
+      reject(new Error('timed out waiting for device reply on FFF2'));
+    }, AUTH_REPLY_TIMEOUT_MS);
+  });
 }
 
 // Runs the full challenge-response handshake once per connection (no
@@ -1582,8 +1612,8 @@ function writeToCharacteristic(char, bytes) {
 async function authenticate() {
   if (!authCharacteristic) throw new Error('not connected');
 
-  const challengeWait = new Promise((resolve) => { authNotifyResolve = resolve; });
-  await writeToCharacteristic(authCharacteristic, new Uint8Array([AUTH_CMD_REQ]));
+  const challengeWait = waitForAuthReply();
+  await writeHexEncodedToCharacteristic(authCharacteristic, new Uint8Array([AUTH_CMD_REQ]));
   const challengeFrame = await challengeWait;
 
   if (challengeFrame.length < 17 || challengeFrame[0] !== AUTH_CMD_CHALLENGE) {
@@ -1599,8 +1629,8 @@ async function authenticate() {
   responseFrame[0] = AUTH_CMD_RESPONSE;
   responseFrame.set(hmac, 1);
 
-  const okWait = new Promise((resolve) => { authNotifyResolve = resolve; });
-  await writeToCharacteristic(authCharacteristic, responseFrame);
+  const okWait = waitForAuthReply();
+  await writeHexEncodedToCharacteristic(authCharacteristic, responseFrame);
   const resultFrame = await okWait;
 
   return resultFrame.length > 0 && resultFrame[0] === AUTH_CMD_OK;
