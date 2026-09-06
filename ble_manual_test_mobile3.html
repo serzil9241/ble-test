@@ -422,20 +422,25 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <div id="helpInfo"></div>
 </div>
 
-<!-- Upgrade (test transfer) — sends a .bin over the FF01/FF00 raw-binary
-     file channel (file_rcv.c), the same channel doronb's mechanism already
-     receives+CRC32-checks+stages into flash sectors 4-6 (FILE_FLASH_BASE_ADDR).
-     This screen only tests/exercises that receive-and-stage pipeline; there is
-     no bootloader/RAM-copier yet, so a successful "FILE OK" here means the
-     bytes are sitting in flash, not that the device is now running them. -->
+<!-- Upgrade — sends a .bin over the FF01/FF00 raw-binary file channel
+     (file_rcv.c), the same channel doronb's mechanism already receives+
+     CRC32-checks+stages into flash sectors 4-7 (FILE_FLASH_BASE_ADDR,
+     BUILD_PROFILE_BIG_FILE_TEST — 512 KB, sector 7 no longer reserved for
+     V2 config/phonebook/SMS, not needed on this device). "Apply Update"
+     sends the new "apply update" command (boot_apply.c) — the device
+     re-verifies the staged image's CRC32, copies it over its own running
+     app (sectors 0-3, single-project self-update, no separate bootloader),
+     and resets. The BLE link drops the instant it resets — that's expected,
+     not a failure; reconnect afterwards to confirm the new firmware is up. -->
 <div id="upgradeView" style="display:none">
   <div class="viewHeader">
     <button id="backFromUpgrade">&larr; Back</button>
-    <h2>Upgrade (test transfer)</h2>
+    <h2>Upgrade</h2>
   </div>
   <div class="quickCmdsRow">
     <button id="upgradeFetchBtn" class="quickCmdBtn">Fetch Firmware</button>
     <button id="upgradeSendBtn" class="quickCmdBtn" disabled>Send to Device</button>
+    <button id="upgradeApplyBtn" class="quickCmdBtn" style="display:none">Apply Update</button>
   </div>
   <div id="upgradeInfo">
     <div id="upgradeStatusLine">Not fetched yet.</div>
@@ -563,6 +568,7 @@ const tileUpgrade = document.getElementById('tileUpgrade');
 const backFromUpgrade = document.getElementById('backFromUpgrade');
 const upgradeFetchBtn = document.getElementById('upgradeFetchBtn');
 const upgradeSendBtn = document.getElementById('upgradeSendBtn');
+const upgradeApplyBtn = document.getElementById('upgradeApplyBtn');
 const upgradeStatusLineEl = document.getElementById('upgradeStatusLine');
 const upgradeProgressEl = document.getElementById('upgradeProgress');
 const upgradeProgressFillEl = document.getElementById('upgradeProgressFill');
@@ -921,6 +927,11 @@ function setConnectedUI(connected) {
   // already fetched — on disconnect this always disables it, since any
   // transfer in progress is dead along with the connection.
   upgradeSendBtn.disabled = !connected || !fetchedFirmwareBytes;
+  // "Apply Update" hides on disconnect too — after a real apply, the device
+  // resets and drops the link on purpose (see upgradeApplyBtn's own click
+  // handler); after reconnecting, a fresh Fetch/Send is needed before
+  // Apply makes sense again.
+  if (!connected) upgradeApplyBtn.style.display = 'none';
   battRowEl.style.display = connected ? '' : 'none';
 }
 
@@ -1759,6 +1770,7 @@ function setUpgradeDetail(text) { upgradeDetailLineEl.textContent = text; }
 upgradeFetchBtn.addEventListener('click', async () => {
   fetchedFirmwareBytes = null;
   upgradeSendBtn.disabled = true;
+  upgradeApplyBtn.style.display = 'none'; // stale from a previous successful transfer, if any
   upgradeProgressEl.style.display = 'none';
   setUpgradeStatus('Fetching…');
   setUpgradeDetail(FIRMWARE_URL);
@@ -1796,7 +1808,9 @@ upgradeSendBtn.addEventListener('click', async () => {
     });
 
     if (result.ok) {
-      setUpgradeStatus('FILE OK — staged in flash (sectors 4-6). Not yet running — no bootloader/apply step exists.');
+      setUpgradeStatus('FILE OK — staged in flash. Tap "Apply Update" to make the device run it.');
+      upgradeApplyBtn.style.display = '';
+      upgradeApplyBtn.disabled = false;
     } else {
       setUpgradeStatus(`FILE BAD — ${result.reason}`);
     }
@@ -1806,6 +1820,20 @@ upgradeSendBtn.addEventListener('click', async () => {
     upgradeFetchBtn.disabled = false;
     upgradeSendBtn.disabled = !characteristic;
   }
+});
+
+// Sends the new "apply update" command (Prog7000_App.c's CommandParser +
+// boot_apply.c) over the ordinary FFF1 text channel — same as any other
+// quickCmdBtn, plain sendText(), no special encoding. The device
+// re-verifies the staged image's CRC32 itself before touching anything, so
+// this is safe to send even if the earlier FILE OK here turns out to have
+// been wrong somehow. Firmware resets immediately on success — the BLE
+// link WILL drop right after this, that's expected, not a failure.
+upgradeApplyBtn.addEventListener('click', () => {
+  if (!characteristic) return;
+  upgradeApplyBtn.disabled = true;
+  setUpgradeStatus('Applying — device will copy the staged image over itself and reset now. Reconnect afterward to confirm.');
+  sendText('apply update');
 });
 
 // ---- Connect / disconnect ----
