@@ -277,6 +277,19 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     height: 100%; width: 0%; background: var(--accent);
     transition: width 0.15s linear;
   }
+  /* Upgrade screen — same bar look as the scan progress bar above, just a
+     second instance (byte offset / total file size instead of address / 127). */
+  #upgradeInfo { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  #upgradeStatusLine { font-size: 16px; font-weight: 600; color: var(--text); }
+  #upgradeProgress {
+    height: 6px; border-radius: 3px; background: var(--border);
+    overflow: hidden;
+  }
+  #upgradeProgressFill {
+    height: 100%; width: 0%; background: var(--accent);
+    transition: width 0.15s linear;
+  }
+  #upgradeDetailLine { font-size: 13px; color: var(--muted); white-space: pre-wrap; }
 </style>
 </head>
 <body>
@@ -307,6 +320,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 <div id="homeView">
   <button id="tileOneDevice" class="tileBtn" disabled>One Device</button>
   <button id="tileLoopDevices" class="tileBtn" disabled>Loop Devices</button>
+  <button id="tileUpgrade" class="tileBtn" disabled>Upgrade</button>
 </div>
 
 <div id="loopView" style="display:none">
@@ -408,6 +422,28 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <div id="helpInfo"></div>
 </div>
 
+<!-- Upgrade (test transfer) — sends a .bin over the FF01/FF00 raw-binary
+     file channel (file_rcv.c), the same channel doronb's mechanism already
+     receives+CRC32-checks+stages into flash sectors 4-6 (FILE_FLASH_BASE_ADDR).
+     This screen only tests/exercises that receive-and-stage pipeline; there is
+     no bootloader/RAM-copier yet, so a successful "FILE OK" here means the
+     bytes are sitting in flash, not that the device is now running them. -->
+<div id="upgradeView" style="display:none">
+  <div class="viewHeader">
+    <button id="backFromUpgrade">&larr; Back</button>
+    <h2>Upgrade (test transfer)</h2>
+  </div>
+  <div class="quickCmdsRow">
+    <button id="upgradeFetchBtn" class="quickCmdBtn">Fetch Firmware</button>
+    <button id="upgradeSendBtn" class="quickCmdBtn" disabled>Send to Device</button>
+  </div>
+  <div id="upgradeInfo">
+    <div id="upgradeStatusLine">Not fetched yet.</div>
+    <div id="upgradeProgress" style="display:none"><div id="upgradeProgressFill"></div></div>
+    <div id="upgradeDetailLine"></div>
+  </div>
+</div>
+
 <div id="addrModalOverlay">
   <div id="addrModalCard">
     <div id="addrModalLabel">Address (1-3 digits):</div>
@@ -437,6 +473,12 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 const DEVICE_NAME_PREFIX = "PROG7000";
 const SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb";
 const CHAR_UUID    = "0000fff1-0000-1000-8000-00805f9b34fb";
+// Auth (HMAC-SHA256 challenge-response, ble_auth.c) — second characteristic
+// of the SAME service as CHAR_UUID above (FFF0), not a separate service.
+const AUTH_CHAR_UUID = "0000fff2-0000-1000-8000-00805f9b34fb";
+// File transfer (file_rcv.c/.h) — its OWN service (FF00), separate from FFF0.
+const FILE_SERVICE_UUID = "0000ff00-0000-1000-8000-00805f9b34fb";
+const FILE_CHAR_UUID    = "0000ff01-0000-1000-8000-00805f9b34fb";
 const KEEPALIVE_TEXT = "Hello prog7000";
 const KEEPALIVE_INTERVAL_MS = 3000;
 
@@ -452,6 +494,9 @@ const KEEPALIVE_INTERVAL_MS = 3000;
 let linesSinceLastKeepalive = 0;
 
 let device = null, server = null, characteristic = null;
+// Auth (FFF2) and file-transfer (FF01) characteristics — acquired alongside
+// `characteristic` (FFF1) in connect(), null whenever not connected.
+let authCharacteristic = null, fileCharacteristic = null;
 let wakeLock = null;
 
 // Keeps the screen from auto-dimming/locking due to idle timeout while
@@ -513,6 +558,15 @@ const helpView = document.getElementById('helpView');
 const helpBtn = document.getElementById('helpBtn');
 const backFromHelp = document.getElementById('backFromHelp');
 const helpInfoEl = document.getElementById('helpInfo');
+const upgradeView = document.getElementById('upgradeView');
+const tileUpgrade = document.getElementById('tileUpgrade');
+const backFromUpgrade = document.getElementById('backFromUpgrade');
+const upgradeFetchBtn = document.getElementById('upgradeFetchBtn');
+const upgradeSendBtn = document.getElementById('upgradeSendBtn');
+const upgradeStatusLineEl = document.getElementById('upgradeStatusLine');
+const upgradeProgressEl = document.getElementById('upgradeProgress');
+const upgradeProgressFillEl = document.getElementById('upgradeProgressFill');
+const upgradeDetailLineEl = document.getElementById('upgradeDetailLine');
 const ledOnBtn = document.getElementById('ledOnBtn');
 const ledOffBtn = document.getElementById('ledOffBtn');
 const oneAddrLineEl = document.getElementById('oneAddrLine');
@@ -558,6 +612,7 @@ function showView(view) {
   commandView.style.display = (view === 'command') ? '' : 'none';
   deviceListView.style.display = (view === 'deviceList') ? '' : 'none';
   helpView.style.display = (view === 'help') ? '' : 'none';
+  upgradeView.style.display = (view === 'upgrade') ? '' : 'none';
 }
 
 // "Log" is reachable from any screen and returns to whichever one you were
@@ -567,7 +622,8 @@ logBtn.addEventListener('click', () => {
     : oneView.style.display !== 'none' ? 'one'
     : commandView.style.display !== 'none' ? 'command'
     : deviceListView.style.display !== 'none' ? 'deviceList'
-    : helpView.style.display !== 'none' ? 'help' : 'home';
+    : helpView.style.display !== 'none' ? 'help'
+    : upgradeView.style.display !== 'none' ? 'upgrade' : 'home';
   showView('log');
 });
 backFromLog.addEventListener('click', () => showView(viewBeforeLog));
@@ -632,6 +688,8 @@ tileLoopDevices.addEventListener('click', () => {
 });
 commandBtn.addEventListener('click', () => showView('command'));
 backFromCommand.addEventListener('click', () => showView('loop'));
+tileUpgrade.addEventListener('click', () => showView('upgrade'));
+backFromUpgrade.addEventListener('click', () => showView('home'));
 
 // Keeps deviceListSummaryEl itself (only clears the per-device rows added
 // after it) — same reasoning as clearLoopFoundLines(): innerHTML-replacing
@@ -858,6 +916,11 @@ function setConnectedUI(connected) {
   // so their own buttons no longer need their own disabled tracking.
   tileOneDevice.disabled = !connected;
   tileLoopDevices.disabled = !connected;
+  tileUpgrade.disabled = !connected;
+  // Only re-enable "Send to Device" on (re)connect if a firmware image was
+  // already fetched — on disconnect this always disables it, since any
+  // transfer in progress is dead along with the connection.
+  upgradeSendBtn.disabled = !connected || !fetchedFirmwareBytes;
   battRowEl.style.display = connected ? '' : 'none';
 }
 
@@ -1473,6 +1536,237 @@ function updateBatteryWidget() {
   battRowEl.title = usbConnected ? 'USB connected' : 'USB not connected';
 }
 
+// ---- Upgrade (test transfer) — auth handshake + FF01 file-transfer ----
+// Mirrors ble_auth.c and file_rcv.c/.h byte-for-byte. This screen only
+// exercises the receive/CRC32/flash-staging pipeline that already exists on
+// the firmware side (into sectors 4-6, FILE_FLASH_BASE_ADDR) — there is no
+// bootloader/RAM-copier yet, so "FILE OK" here means the bytes are staged in
+// flash, not that the device has started running them.
+
+// ---- Auth (FFF2, ble_auth.c) ----
+// Shared key MUST match ble_auth_shared_key in ble_auth.c exactly.
+const AUTH_SHARED_KEY = new Uint8Array([
+  0x4D, 0x79, 0x53, 0x65, 0x63, 0x72, 0x65, 0x74,
+  0x4B, 0x65, 0x79, 0x31, 0x32, 0x33, 0x34, 0x35,
+  0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, 0x07, 0x18,
+  0x29, 0x3A, 0x4B, 0x5C, 0x6D, 0x7E, 0x8F, 0x90
+]);
+const AUTH_CMD_REQ       = 0xA0;
+const AUTH_CMD_CHALLENGE = 0xA1;
+const AUTH_CMD_RESPONSE  = 0xA2;
+const AUTH_CMD_OK        = 0xA3;
+const AUTH_CMD_FAIL      = 0xA4;
+
+// Resolves with the next raw notification frame on FFF2 — set right before
+// each auth write, cleared once consumed. Only one auth exchange is ever in
+// flight at a time (this screen is the only caller), so a single slot is
+// enough — no queue needed.
+let authNotifyResolve = null;
+
+function handleAuthNotification(bytes) {
+  if (!authNotifyResolve) return; // unexpected/stray — ignore
+  const resolve = authNotifyResolve;
+  authNotifyResolve = null;
+  resolve(bytes);
+}
+
+function writeToCharacteristic(char, bytes) {
+  return char.writeValueWithoutResponse
+    ? char.writeValueWithoutResponse(bytes)
+    : char.writeValue(bytes); // older Chrome fallback, same as queueGattWrite()
+}
+
+// Runs the full challenge-response handshake once per connection (no
+// timeout server-side — BLE_AUTH_TIMEOUT_MS is 0 — so this only needs to
+// happen once, not before every file transfer). Returns true/false.
+async function authenticate() {
+  if (!authCharacteristic) throw new Error('not connected');
+
+  const challengeWait = new Promise((resolve) => { authNotifyResolve = resolve; });
+  await writeToCharacteristic(authCharacteristic, new Uint8Array([AUTH_CMD_REQ]));
+  const challengeFrame = await challengeWait;
+
+  if (challengeFrame.length < 17 || challengeFrame[0] !== AUTH_CMD_CHALLENGE) {
+    throw new Error(`unexpected auth reply (expected 0xA1 + 16 bytes, got ${challengeFrame.length} bytes starting 0x${(challengeFrame[0] || 0).toString(16)})`);
+  }
+  const challenge = challengeFrame.slice(1, 17);
+
+  const hmacKey = await crypto.subtle.importKey(
+    'raw', AUTH_SHARED_KEY, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const hmac = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, challenge));
+
+  const responseFrame = new Uint8Array(1 + hmac.length);
+  responseFrame[0] = AUTH_CMD_RESPONSE;
+  responseFrame.set(hmac, 1);
+
+  const okWait = new Promise((resolve) => { authNotifyResolve = resolve; });
+  await writeToCharacteristic(authCharacteristic, responseFrame);
+  const resultFrame = await okWait;
+
+  return resultFrame.length > 0 && resultFrame[0] === AUTH_CMD_OK;
+}
+
+// ---- CRC-32 (IEEE 802.3 / zlib, same as crc32_update() in file_rcv.c) ----
+let crc32Table = null;
+function crc32(bytes) {
+  if (!crc32Table) {
+    crc32Table = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      crc32Table[i] = c >>> 0;
+    }
+  }
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) {
+    crc = (crc >>> 8) ^ crc32Table[(crc ^ bytes[i]) & 0xFF];
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+// ---- File transfer (FF01, file_rcv.c/.h) ----
+const FILE_CHUNK_PAYLOAD_SIZE = 245;   // fixed — matches ble.c/file_rcv.h comments
+const FILE_ACK_SIGNAL      = 6;
+const FILE_NAK_SIGNAL      = 7;
+const FILE_OK_SIGNAL       = 8;
+const FILE_BAD_SIGNAL      = 9;
+const FILE_REPLY_TIMEOUT_MS = 5000;
+
+let fileNotifyResolve = null, fileNotifyTimer = null;
+
+function handleFileNotification(bytes) {
+  if (!fileNotifyResolve) return; // unexpected/stray — ignore
+  clearTimeout(fileNotifyTimer);
+  const resolve = fileNotifyResolve;
+  fileNotifyResolve = null;
+  resolve(bytes.length > 0 ? bytes[0] : -1);
+}
+
+// Writes one frame (10-byte header, or 247-byte chunk) and waits for the
+// single-byte ACK/NAK/FILE_OK/FILE_BAD reply, retrying the SAME frame on
+// NAK — exactly what file_rcv.c expects ("NAK — retry the same write").
+async function writeFileFrame(bytes, maxRetries) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const replyWait = new Promise((resolve, reject) => {
+      fileNotifyResolve = resolve;
+      fileNotifyTimer = setTimeout(() => {
+        fileNotifyResolve = null;
+        reject(new Error('timed out waiting for device reply'));
+      }, FILE_REPLY_TIMEOUT_MS);
+    });
+    await writeToCharacteristic(fileCharacteristic, bytes);
+    const reply = await replyWait;
+    if (reply !== FILE_NAK_SIGNAL) return reply;
+    // NAK — loop again and resend the identical frame.
+  }
+  throw new Error(`gave up after ${maxRetries} NAKs`);
+}
+
+// Sends fileBytes over FF01 per file_rcv.c's exact framing:
+//   header  = [size_u32_LE(4) | hdr_sum16_LE(2) | crc32_LE(4)]   (10 bytes)
+//   chunk   = [payload(245, zero-padded on the last chunk) | sum16_LE(2)] (247 bytes)
+// onProgress(bytesSent, totalBytes) is called after every chunk.
+async function sendFileOverBle(fileBytes, onProgress) {
+  const size = fileBytes.length;
+  const fileCrc = crc32(fileBytes);
+
+  const header = new Uint8Array(10);
+  header[0] = size & 0xFF; header[1] = (size >>> 8) & 0xFF;
+  header[2] = (size >>> 16) & 0xFF; header[3] = (size >>> 24) & 0xFF;
+  const hdrSum = (header[0] + header[1] + header[2] + header[3]) & 0xFFFF;
+  header[4] = hdrSum & 0xFF; header[5] = (hdrSum >>> 8) & 0xFF;
+  header[6] = fileCrc & 0xFF; header[7] = (fileCrc >>> 8) & 0xFF;
+  header[8] = (fileCrc >>> 16) & 0xFF; header[9] = (fileCrc >>> 24) & 0xFF;
+
+  const headerReply = await writeFileFrame(header, 5);
+  if (headerReply !== FILE_ACK_SIGNAL) {
+    throw new Error(`header rejected (reply=0x${headerReply.toString(16)}) — bad size or hdr_sum16`);
+  }
+
+  let offset = 0;
+  while (offset < size) {
+    const n = Math.min(FILE_CHUNK_PAYLOAD_SIZE, size - offset);
+    // Uint8Array is zero-initialized, so the tail of the final short chunk
+    // is 0x00 padding automatically — matches file_rcv.c's own expectation.
+    const chunk = new Uint8Array(FILE_CHUNK_PAYLOAD_SIZE + 2);
+    chunk.set(fileBytes.subarray(offset, offset + n), 0);
+    let sum = 0;
+    for (let i = 0; i < FILE_CHUNK_PAYLOAD_SIZE; i++) sum = (sum + chunk[i]) & 0xFFFF;
+    chunk[FILE_CHUNK_PAYLOAD_SIZE] = sum & 0xFF;
+    chunk[FILE_CHUNK_PAYLOAD_SIZE + 1] = (sum >>> 8) & 0xFF;
+
+    const reply = await writeFileFrame(chunk, 5);
+    offset += n;
+    if (onProgress) onProgress(offset, size);
+
+    if (reply === FILE_OK_SIGNAL) return { ok: true };
+    if (reply === FILE_BAD_SIGNAL) return { ok: false, reason: 'whole-file CRC32 mismatch (FILE_BAD)' };
+    // else FILE_ACK_SIGNAL — normal mid-transfer ack, continue.
+  }
+  return { ok: true };
+}
+
+// ---- Fetch from GitHub Pages (same repo/folder this page itself loads
+// from) instead of a phone-local file picker — see FIRMWARE_URL below.
+// Push the built .bin to that path in the repo and it's what gets sent.
+const FIRMWARE_URL = 'Prog7000.bin';
+let fetchedFirmwareBytes = null;
+
+function setUpgradeStatus(text) { upgradeStatusLineEl.textContent = text; }
+function setUpgradeDetail(text) { upgradeDetailLineEl.textContent = text; }
+
+upgradeFetchBtn.addEventListener('click', async () => {
+  fetchedFirmwareBytes = null;
+  upgradeSendBtn.disabled = true;
+  upgradeProgressEl.style.display = 'none';
+  setUpgradeStatus('Fetching…');
+  setUpgradeDetail(FIRMWARE_URL);
+  try {
+    // Cache-bust — GitHub Pages/the browser can otherwise keep serving a
+    // stale .bin under the same filename after you push a new build.
+    const resp = await fetch(`${FIRMWARE_URL}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buf = await resp.arrayBuffer();
+    fetchedFirmwareBytes = new Uint8Array(buf);
+    setUpgradeStatus(`Fetched ${fetchedFirmwareBytes.length} bytes.`);
+    setUpgradeDetail(`CRC32 = 0x${crc32(fetchedFirmwareBytes).toString(16).toUpperCase().padStart(8, '0')}`);
+    upgradeSendBtn.disabled = !characteristic;
+  } catch (err) {
+    setUpgradeStatus(`Fetch failed: ${err}`);
+    setUpgradeDetail(`Push the .bin to "${FIRMWARE_URL}" in the repo (same folder as this page) and try again.`);
+  }
+});
+
+upgradeSendBtn.addEventListener('click', async () => {
+  if (!fetchedFirmwareBytes || !characteristic) return;
+  upgradeFetchBtn.disabled = true;
+  upgradeSendBtn.disabled = true;
+  upgradeProgressEl.style.display = '';
+  upgradeProgressFillEl.style.width = '0%';
+  try {
+    setUpgradeStatus('Authenticating…');
+    const authOk = await authenticate();
+    if (!authOk) throw new Error('authentication failed (AUTH_FAIL) — check the shared key');
+
+    setUpgradeStatus('Sending…');
+    const result = await sendFileOverBle(fetchedFirmwareBytes, (sent, total) => {
+      upgradeProgressFillEl.style.width = `${((sent / total) * 100).toFixed(1)}%`;
+      setUpgradeDetail(`${sent} / ${total} bytes`);
+    });
+
+    if (result.ok) {
+      setUpgradeStatus('FILE OK — staged in flash (sectors 4-6). Not yet running — no bootloader/apply step exists.');
+    } else {
+      setUpgradeStatus(`FILE BAD — ${result.reason}`);
+    }
+  } catch (err) {
+    setUpgradeStatus(`Transfer failed: ${err}`);
+  } finally {
+    upgradeFetchBtn.disabled = false;
+    upgradeSendBtn.disabled = !characteristic;
+  }
+});
+
 // ---- Connect / disconnect ----
 
 async function connect() {
@@ -1485,7 +1779,10 @@ async function connect() {
     log(`Requesting device "${DEVICE_NAME_PREFIX}"...`, 'sys');
     device = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
-      optionalServices: [SERVICE_UUID]
+      // FILE_SERVICE_UUID (FF00) must be listed here too — Web Bluetooth
+      // refuses getPrimaryService() on any service not named at request time,
+      // even if the device actually advertises/exposes it.
+      optionalServices: [SERVICE_UUID, FILE_SERVICE_UUID]
     });
     device.addEventListener('gattserverdisconnected', onDisconnected);
 
@@ -1497,6 +1794,21 @@ async function connect() {
     await characteristic.startNotifications();
     characteristic.addEventListener('characteristicvaluechanged', (event) => {
       handleNotification(new Uint8Array(event.target.value.buffer));
+    });
+
+    // FFF2 (auth) — same service as FFF1 above.
+    authCharacteristic = await service.getCharacteristic(AUTH_CHAR_UUID);
+    await authCharacteristic.startNotifications();
+    authCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+      handleAuthNotification(new Uint8Array(event.target.value.buffer));
+    });
+
+    // FF01 (file transfer) — its own service (FF00).
+    const fileService = await server.getPrimaryService(FILE_SERVICE_UUID);
+    fileCharacteristic = await fileService.getCharacteristic(FILE_CHAR_UUID);
+    await fileCharacteristic.startNotifications();
+    fileCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+      handleFileNotification(new Uint8Array(event.target.value.buffer));
     });
 
     log('Connected.', 'sys');
@@ -1514,6 +1826,8 @@ function onDisconnected() {
   stopKeepaliveTimer();
   releaseWakeLock();
   characteristic = null;
+  authCharacteristic = null;
+  fileCharacteristic = null;
   server = null;
   setConnectedUI(false);
   showView('home');
