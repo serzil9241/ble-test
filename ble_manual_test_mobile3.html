@@ -1578,22 +1578,24 @@ function handleAuthNotification(bytes) {
   resolve(isHexString(asciiStr) ? hexToBytes(asciiStr) : new Uint8Array(0));
 }
 
+// Both helpers below route through queueGattWrite() (defined further down,
+// under Send) instead of calling the characteristic directly — otherwise
+// these writes (FFF2/FF01) can collide with the keepalive timer's
+// independent writes on FFF1 and throw "GATT operation already in
+// progress", which the keepalive's own error handler mistakes for a real
+// disconnect (this is exactly what was killing transfers partway through).
 function writeHexEncodedToCharacteristic(char, bytes) {
   let hex = '';
   for (const b of bytes) hex += b.toString(16).padStart(2, '0');
   const payload = new TextEncoder().encode(hex.toUpperCase());
-  return char.writeValueWithoutResponse
-    ? char.writeValueWithoutResponse(payload)
-    : char.writeValue(payload); // older Chrome fallback, same as queueGattWrite()
+  return queueGattWrite(payload, char);
 }
 
 // FF01 (file transfer) really is raw binary (BLE_FILE_RAW_BINARY's ISR
 // fast-path bypasses convert_ascii_to_hex entirely) — used as-is, unlike
 // the hex-encoded helper above.
 function writeToCharacteristic(char, bytes) {
-  return char.writeValueWithoutResponse
-    ? char.writeValueWithoutResponse(bytes)
-    : char.writeValue(bytes);
+  return queueGattWrite(bytes, char);
 }
 
 function waitForAuthReply() {
@@ -1884,20 +1886,23 @@ function disconnect() {
 
 // Web Bluetooth refuses a second GATT operation while one is still in
 // flight — it throws "GATT operation already in progress" instead of
-// queueing it. The keepalive timer (every 3s) and manual sends (button/
-// quick-command) both write to the same characteristic independently, so
-// without this queue they could collide and the keepalive write would
-// spuriously fail right when you send a command (or vice versa). Every
-// write below is chained onto this promise instead of firing directly,
-// so the actual GATT call always waits for the previous one to finish.
+// queueing it, and Android serializes this PER DEVICE, not per characteristic
+// — so the keepalive timer (FFF1, every 3s) colliding with an in-flight
+// Upgrade-screen write (FFF2 or FF01) throws just as readily as two writes
+// on the same characteristic would. All GATT writes to this device — FFF1
+// (sendText/keepalive), FFF2 (auth), FF01 (file transfer) — are chained onto
+// this ONE promise instead of firing directly, so the actual GATT call
+// always waits for the previous one to finish, whichever characteristic it
+// was on.
 let writeChain = Promise.resolve();
 
-function queueGattWrite(payload) {
+function queueGattWrite(payload, char) {
+  char = char || characteristic; // default: FFF1, the original/only caller before Upgrade existed
   const result = writeChain.then(() => {
-    if (characteristic.writeValueWithoutResponse) {
-      return characteristic.writeValueWithoutResponse(payload);
+    if (char.writeValueWithoutResponse) {
+      return char.writeValueWithoutResponse(payload);
     }
-    return characteristic.writeValue(payload); // older Chrome fallback
+    return char.writeValue(payload); // older Chrome fallback
   });
   // Swallow here so one failed write doesn't wedge the chain for everyone
   // after it — callers still see the real error via the returned promise.
