@@ -1664,12 +1664,21 @@ const FILE_REPLY_TIMEOUT_MS = 5000;
 
 let fileNotifyResolve = null, fileNotifyTimer = null;
 
+// Writes to FF01 really are raw binary (the ISR fast-path in ble.c bypasses
+// convert_ascii_to_hex for incoming file data) — but the ACK/NAK/FILE_OK/
+// FILE_BAD reply going the OTHER way is sent via ble_sendData(), which
+// ALWAYS hex-encodes regardless of channel (Bytes_To_HexString() runs
+// unconditionally in there). So the single-byte signal arrives on the wire
+// as two ASCII hex chars (e.g. ACK=6 -> "06" -> bytes 0x30,0x36), same
+// decode as handleAuthNotification()/handleNotification() above.
 function handleFileNotification(bytes) {
   if (!fileNotifyResolve) return; // unexpected/stray — ignore
   clearTimeout(fileNotifyTimer);
   const resolve = fileNotifyResolve;
   fileNotifyResolve = null;
-  resolve(bytes.length > 0 ? bytes[0] : -1);
+  const asciiStr = Array.from(bytes).map(b => String.fromCharCode(b)).join('').trim();
+  const decoded = isHexString(asciiStr) ? hexToBytes(asciiStr) : bytes;
+  resolve(decoded.length > 0 ? decoded[0] : -1);
 }
 
 // Writes one frame (10-byte header, or 247-byte chunk) and waits for the
