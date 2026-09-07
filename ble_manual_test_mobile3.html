@@ -1829,8 +1829,26 @@ upgradeSendBtn.addEventListener('click', async () => {
 // this is safe to send even if the earlier FILE OK here turns out to have
 // been wrong somehow. Firmware resets immediately on success — the BLE
 // link WILL drop right after this, that's expected, not a failure.
+// Battery gate — mirrors the firmware's own refusal (Prog7000_App.c's
+// "apply update" handler also checks this, battery_state==CUT or <30%) but
+// checked HERE too so the person actually sees WHY, instead of a silent
+// DEBUG_MESSAGE only visible on Tera Term. battPercent/usbConnected are
+// already tracked from the same periodic report the battery widget uses
+// (see tryParseBattery() above) — no extra request needed.
+const UPGRADE_MIN_BATTERY_PERCENT = 30;
+
 upgradeApplyBtn.addEventListener('click', () => {
   if (!characteristic) return;
+
+  if (battPercent === null) {
+    setUpgradeStatus('Apply blocked: no battery reading yet from the device — wait a few seconds for the battery widget to update, then try again.');
+    return;
+  }
+  if (battPercent < UPGRADE_MIN_BATTERY_PERCENT) {
+    setUpgradeStatus(`Apply blocked: battery is ${battPercent.toFixed(1)}% — needs to be at least ${UPGRADE_MIN_BATTERY_PERCENT}% before risking a self-update (power loss during the erase/rewrite has no fallback).`);
+    return;
+  }
+
   upgradeApplyBtn.disabled = true;
   setUpgradeStatus('Applying — device will copy the staged image over itself and reset now. Reconnect afterward to confirm.');
   sendText('apply update');
