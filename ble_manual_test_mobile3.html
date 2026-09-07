@@ -290,6 +290,20 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     transition: width 0.15s linear;
   }
   #upgradeDetailLine { font-size: 13px; color: var(--muted); white-space: pre-wrap; }
+  /* Header buttons (Disconnect/Keepalive/Log/Icons) — same "barely visible
+     against the panel background" issue the Back button had, same fix:
+     a touch lighter than the plain button background. Connect keeps its
+     own .primary (accent-blue) look, untouched. */
+  header button:not(.primary) { background: #3a4150; border-color: #4a5265; }
+  header button:not(.primary):active { background: #454d5e; }
+  /* Firmware version banner — printed once by the device right after BLE
+     connects (ble.c's app_bleConnectionCallback), shown as its own thin
+     row under the header buttons. Hidden until a version line actually
+     arrives, and again on disconnect (see setConnectedUI). */
+  #fwVersionRow {
+    flex: 0 0 auto; padding: 4px 12px; background: var(--panel);
+    border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted);
+  }
 </style>
 </head>
 <body>
@@ -303,6 +317,8 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <button id="logBtn">Log</button>
   <button id="helpBtn">Icons</button>
 </header>
+
+<div id="fwVersionRow" style="display:none"></div>
 
 <div id="battRow" style="display:none" title="Waiting for a battery status report...">
   <svg id="battSvg" viewBox="0 0 54 128" width="38" height="90">
@@ -879,6 +895,7 @@ backFromOne.addEventListener('click', () => {
   sendText('stop');
   showView('home');
 });
+const fwVersionRowEl = document.getElementById('fwVersionRow');
 const battRowEl = document.getElementById('battRow');
 const battFillEl = document.getElementById('battFill');
 const battBoltEl = document.getElementById('battBolt');
@@ -932,6 +949,9 @@ function setConnectedUI(connected) {
   // handler); after reconnecting, a fresh Fetch/Send is needed before
   // Apply makes sense again.
   if (!connected) upgradeApplyBtn.style.display = 'none';
+  // New connection — the old version banner (if any) is from a previous
+  // session; hide it until the device sends a fresh one.
+  if (!connected) fwVersionRowEl.style.display = 'none';
   battRowEl.style.display = connected ? '' : 'none';
 }
 
@@ -988,11 +1008,28 @@ function handleNotification(bytes) {
   // many lines the firmware sent (see linesSinceLastKeepalive above).
   linesSinceLastKeepalive += text.split(/\r\n|\r|\n/).filter(line => line.trim().length > 0).length;
   tryParseBattery(text);
+  tryParseFwVersion(text);
   tryParseOneDeviceAnswer(text);
   tryParseSlcInfo(text);
   tryParseV24Info(text);
   tryParseLoopScanInfo(text);
   tryParseDeviceList(text);
+}
+
+// Firmware version banner — sent once, right after BLE connects
+// (ble.c's app_bleConnectionCallback: `ble_report_line(ANSI_GREEN"...
+// Version %d ..."ANSI_RESET, PROG7000_VERSION)`). "Version " with a SPACE
+// before the digits distinguishes this from the One Device screen's own
+// "...Version=%d..." (ONE_DEVICE_RE) — that one always has "=", never a
+// space, so the two never collide.
+const FW_VERSION_RE = /\bVersion\s+(\d+)/;
+
+function tryParseFwVersion(text) {
+  const vm = FW_VERSION_RE.exec(text);
+  if (vm) {
+    fwVersionRowEl.textContent = `Firmware Version: ${vm[1]}`;
+    fwVersionRowEl.style.display = '';
+  }
 }
 
 // Reuses the same "Receive ADDR=... OPC=... DATA=..." / "tr_com = N" shapes
