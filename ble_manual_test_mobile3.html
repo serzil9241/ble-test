@@ -494,6 +494,11 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 
 <script>
 const DEVICE_NAME_PREFIX = "PROG7000";
+// Firmware's loop addresses only ever run 1-127 (Prog7000_App.c's own scan
+// loop, "for (i = 1; i < 128; i++)") — every place an address is typed in
+// (LED ON/OFF, change addr, run one device) clamps down to this instead of
+// sending something the firmware was never going to have anyway.
+const MAX_DEVICE_ADDR = 127;
 const SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb";
 const CHAR_UUID    = "0000fff1-0000-1000-8000-00805f9b34fb";
 // Auth (HMAC-SHA256 challenge-response, ble_auth.c) — second characteristic
@@ -751,7 +756,7 @@ backFromDeviceList.addEventListener('click', () => showView('loop'));
 let lastRunOneDeviceAddr = null;
 
 runOneDeviceBtn.addEventListener('click', async () => {
-  const defaultVal = (lastRunOneDeviceAddr === null) ? '1' : String(lastRunOneDeviceAddr + 1);
+  const defaultVal = (lastRunOneDeviceAddr === null) ? '1' : String(Math.min(lastRunOneDeviceAddr + 1, MAX_DEVICE_ADDR));
   const input = await promptNumericAddress('Device address to run continuously:', defaultVal);
   if (input === null) return; // cancelled
 
@@ -760,7 +765,7 @@ runOneDeviceBtn.addEventListener('click', async () => {
     log(`"${input}" is not 1-3 digits — not sent.`, 'err');
     return;
   }
-  lastRunOneDeviceAddr = parseInt(trimmed, 10);
+  lastRunOneDeviceAddr = Math.min(parseInt(trimmed, 10), MAX_DEVICE_ADDR);
 
   loopFoundInfoEl.style.display = 'none';
   clearLoopFoundLines();
@@ -775,7 +780,7 @@ runOneDeviceBtn.addEventListener('click', async () => {
   loopRecErrorLineEl.textContent = 'receive error = —';
   loopRecErrorLineEl.style.display = 'none';
 
-  sendText('run one device' + trimmed);
+  sendText('run one device' + lastRunOneDeviceAddr);
 });
 
 // One entry per unique icon/label — Gas (9-12) and Photo & Heat (19-21) each
@@ -906,9 +911,10 @@ async function promptForDeviceAddress(message) {
     log(`"${input}" is not 1-3 digits — not sent.`, 'err');
     return null;
   }
-  lastChAddr = parseInt(trimmed, 10);
-  lastLedAddress = trimmed;
-  return trimmed;
+  const clamped = Math.min(parseInt(trimmed, 10), MAX_DEVICE_ADDR);
+  lastChAddr = clamped;
+  lastLedAddress = String(clamped);
+  return String(clamped);
 }
 
 // LED_ON=2, LED_OFF=3 — service_detector.h. Sent via the same generic
@@ -2102,7 +2108,7 @@ document.querySelectorAll('.quickCmdBtn').forEach(btn => {
 // "OK" walks the address up by one each time; the value can still be
 // edited freely before sending.
 chAddrBtn.addEventListener('click', async () => {
-  const defaultVal = (lastChAddr === null) ? '1' : String(lastChAddr + 1);
+  const defaultVal = (lastChAddr === null) ? '1' : String(Math.min(lastChAddr + 1, MAX_DEVICE_ADDR));
   const input = await promptNumericAddress('New address (1-3 digits):', defaultVal);
   if (input === null) return; // cancelled
 
@@ -2112,13 +2118,13 @@ chAddrBtn.addEventListener('click', async () => {
     return;
   }
 
-  lastChAddr = parseInt(trimmed, 10);
+  lastChAddr = Math.min(parseInt(trimmed, 10), MAX_DEVICE_ADDR);
   // Don't show the new address until the device actually confirms it — if
   // the device wasn't flashed with this address, no reply will ever come
   // back, and showing it optimistically would be a lie. Address, like
   // Value/Version/Temp/icon, waits for the real reply.
   resetOneView();
-  sendText('ch addr' + trimmed);
+  sendText('ch addr' + lastChAddr);
 });
 
 // ---- Keepalive ----
