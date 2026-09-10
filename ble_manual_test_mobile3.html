@@ -718,7 +718,20 @@ tileLoopDevices.addEventListener('click', () => {
 });
 commandBtn.addEventListener('click', () => showView('command'));
 backFromCommand.addEventListener('click', () => showView('loop'));
-tileUpgrade.addEventListener('click', () => showView('upgrade'));
+// Battery gate checked right here, on entry — not only at Apply Update —
+// so a low battery is obvious before spending time on Fetch/Send at all.
+// upgradeBatteryOk()/upgradeBatteryBlockedReason() are defined further
+// down (under Upgrade), alongside the Apply-time re-check.
+tileUpgrade.addEventListener('click', () => {
+  showView('upgrade');
+  if (upgradeBatteryOk()) {
+    upgradeFetchBtn.disabled = false;
+    setUpgradeStatus('Not fetched yet.');
+  } else {
+    upgradeFetchBtn.disabled = true;
+    setUpgradeStatus(`Blocked: ${upgradeBatteryBlockedReason()}`);
+  }
+});
 backFromUpgrade.addEventListener('click', () => showView('home'));
 
 // Keeps deviceListSummaryEl itself (only clears the per-device rows added
@@ -1928,15 +1941,25 @@ upgradeSendBtn.addEventListener('click', async () => {
 // (see tryParseBattery() above) — no extra request needed.
 const UPGRADE_MIN_BATTERY_PERCENT = 30;
 
+// Shared by two call sites: tileUpgrade's own click handler (checked the
+// INSTANT you enter the Upgrade screen, before wasting time on Fetch/Send)
+// and upgradeApplyBtn's click handler (the actual last-resort gate right
+// before the risky step — battery could have dropped in between).
+function upgradeBatteryOk() {
+  return battPercent !== null && battPercent >= UPGRADE_MIN_BATTERY_PERCENT;
+}
+function upgradeBatteryBlockedReason() {
+  if (battPercent === null) {
+    return 'no battery reading yet from the device — wait a few seconds for the battery widget to update, then try again.';
+  }
+  return `battery is ${battPercent.toFixed(1)}% — needs to be at least ${UPGRADE_MIN_BATTERY_PERCENT}% before risking a self-update (power loss during the erase/rewrite has no fallback).`;
+}
+
 upgradeApplyBtn.addEventListener('click', () => {
   if (!characteristic) return;
 
-  if (battPercent === null) {
-    setUpgradeStatus('Apply blocked: no battery reading yet from the device — wait a few seconds for the battery widget to update, then try again.');
-    return;
-  }
-  if (battPercent < UPGRADE_MIN_BATTERY_PERCENT) {
-    setUpgradeStatus(`Apply blocked: battery is ${battPercent.toFixed(1)}% — needs to be at least ${UPGRADE_MIN_BATTERY_PERCENT}% before risking a self-update (power loss during the erase/rewrite has no fallback).`);
+  if (!upgradeBatteryOk()) {
+    setUpgradeStatus(`Apply blocked: ${upgradeBatteryBlockedReason()}`);
     return;
   }
 
