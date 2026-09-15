@@ -169,7 +169,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start;
     display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px;
   }
-  #loopView, #oneView, #logView, #commandView, #deviceListView, #helpView {
+  #loopView, #oneView, #logView, #commandView, #deviceListView, #helpView, #upgradeView {
     flex: 1 1 auto; min-height: 0; overflow: hidden;
     display: flex; flex-direction: column;
   }
@@ -257,6 +257,12 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   }
   footer {
     flex: 0 0 auto; /* never shrink */
+    /* Pushes the footer to the bottom of its view's flex column even when
+       nothing above it has flex-grow of its own (loopView's loopSpacer
+       already grows, so this is a no-op there; oneView/upgradeView don't
+       have a dedicated spacer, so this is what actually pins Back down
+       for them). */
+    margin-top: auto;
     display: flex; gap: 8px; padding: 10px 12px; background: var(--panel);
     border-top: 1px solid var(--border); align-items: center; justify-content: center;
   }
@@ -289,7 +295,10 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   }
   /* Upgrade screen — same bar look as the scan progress bar above, just a
      second instance (byte offset / total file size instead of address / 127). */
-  #upgradeInfo { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  #upgradeInfo {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  }
   #upgradeStatusLine { font-size: 16px; font-weight: 600; color: var(--text); }
   #upgradeProgress {
     height: 6px; border-radius: 3px; background: var(--border);
@@ -390,7 +399,6 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 
 <div id="oneView" style="display:none">
   <div class="viewHeader">
-    <button id="backFromOne">&larr; Back</button>
     <h2>One Device</h2>
   </div>
   <div class="quickCmdsRow">
@@ -407,6 +415,9 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
       <svg id="oneDeviceIcon" viewBox="0 0 93 48" width="93" height="48"></svg>
     </div>
   </div>
+  <footer>
+    <button id="backFromOne">&larr; Back</button>
+  </footer>
 </div>
 
 <div id="logView" style="display:none">
@@ -464,7 +475,6 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
      not a failure; reconnect afterwards to confirm the new firmware is up. -->
 <div id="upgradeView" style="display:none">
   <div class="viewHeader">
-    <button id="backFromUpgrade">&larr; Back</button>
     <h2>Upgrade</h2>
   </div>
   <div class="quickCmdsRow">
@@ -477,6 +487,9 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     <div id="upgradeProgress" style="display:none"><div id="upgradeProgressFill"></div></div>
     <div id="upgradeDetailLine"></div>
   </div>
+  <footer>
+    <button id="backFromUpgrade">&larr; Back</button>
+  </footer>
 </div>
 
 <div id="addrModalOverlay">
