@@ -264,7 +264,7 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
        for them). */
     margin-top: auto;
     display: flex; gap: 8px; padding: 10px 12px; background: var(--panel);
-    border-top: 1px solid var(--border); align-items: center; justify-content: center;
+    border-top: 1px solid var(--border); align-items: center; justify-content: flex-end;
   }
   /* Free-text command row (input + Send) — lives on the Command sub-screen
      only, right under its own quickCmdsRow, NOT on the main Loop Devices
@@ -419,16 +419,17 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
 
 <div id="logView" style="display:none">
   <div class="viewHeader">
-    <button id="backFromLog">&larr; Back</button>
     <h2>Raw log</h2>
     <button id="clearLogBtn">Clear</button>
   </div>
   <div id="rawLog"></div>
+  <footer>
+    <button id="backFromLog">&larr; Back</button>
+  </footer>
 </div>
 
 <div id="commandView" style="display:none">
   <div class="viewHeader">
-    <button id="backFromCommand">&larr; Back</button>
     <h2>Command</h2>
   </div>
   <div class="quickCmdsRow">
@@ -441,16 +442,21 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     <input id="cmd" type="text" placeholder="e.g. get all devices" autocomplete="off" autocapitalize="off">
     <button id="sendBtn" class="primary">Send</button>
   </div>
+  <footer>
+    <button id="backFromCommand">&larr; Back</button>
+  </footer>
 </div>
 
 <div id="deviceListView" style="display:none">
   <div class="viewHeader">
-    <button id="backFromDeviceList">&larr; Back</button>
     <h2>All devices</h2>
   </div>
   <div id="deviceListInfo">
     <div id="deviceListSummary">Requesting…</div>
   </div>
+  <footer>
+    <button id="backFromDeviceList">&larr; Back</button>
+  </footer>
 </div>
 
 <!-- Static reference — every device-type icon we have, with a label, so
@@ -458,10 +464,12 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
      device of every type connected. Not tied to BLE data at all. -->
 <div id="helpView" style="display:none">
   <div class="viewHeader">
-    <button id="backFromHelp">&larr; Back</button>
     <h2>Icon reference</h2>
   </div>
   <div id="helpInfo"></div>
+  <footer>
+    <button id="backFromHelp">&larr; Back</button>
+  </footer>
 </div>
 
 <!-- Upgrade — sends a .bin over the FF01/FF00 raw-binary file channel
