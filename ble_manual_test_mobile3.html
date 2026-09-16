@@ -746,6 +746,7 @@ function resetLoopView() {
   lastLedAddress = null;
   cmdStopBtn.style.display = 'none';
   cmdContinueBtn.style.display = 'none';
+  loopStoppedIgnoreUpdates = false;
 }
 
 tileOneDevice.addEventListener('click', () => {
@@ -835,6 +836,7 @@ runOneDeviceBtn.addEventListener('click', async () => {
   loopRecErrorLineEl.style.display = 'none';
   cmdStopBtn.style.display = '';
   cmdContinueBtn.style.display = '';
+  loopStoppedIgnoreUpdates = false;
 
   sendText('run one device' + lastRunOneDeviceAddr);
 });
@@ -1181,6 +1183,10 @@ const RECEIVE_ERROR_ADDR_RE = /Receive error\s*=\s*(\d+)\s*\(Addr\s*(\d+)\)/;
 // this (see promptForDeviceAddress()), since it's usually exactly the
 // device you want to go toggle the LED on to find physically.
 let lastSameAddress = null;
+// Set by the Stop button's own click handler, cleared by "get all devices"/
+// "run all devices"/Run One Device/"continue" — see tryParseLoopScanInfo's
+// DEVICE_ANS_RE branch above for why this exists.
+let loopStoppedIgnoreUpdates = false;
 
 function appendLoopResultLine(text, color) {
   const div = document.createElement('div');
@@ -1250,7 +1256,13 @@ function tryParseLoopScanInfo(text) {
     return;
   }
   const dm = DEVICE_ANS_RE.exec(text);
-  if (dm) {
+  // A response to a request sent just BEFORE Stop took effect can still
+  // arrive right after — without this guard it would un-hide Address/Value
+  // a moment after Stop's own click handler hid them, making Stop look
+  // like it "didn't work" until a second press (when no such straggler is
+  // left to resurrect them). Cleared again by "get all devices"/"run all
+  // devices"/Run One Device/"continue" — see their own handlers.
+  if (dm && !loopStoppedIgnoreUpdates) {
     loopAddrLineEl.textContent = `Address = ${dm[1]}`;
     loopAddrLineEl.style.display = '';
     // Loop addresses run 1-127 (Prog7000_App.c's own scan loop, "for (i = 1;
@@ -2185,6 +2197,7 @@ document.querySelectorAll('.quickCmdBtn').forEach(btn => {
       // screen.
       cmdStopBtn.style.display = '';
       cmdContinueBtn.style.display = '';
+      loopStoppedIgnoreUpdates = false;
     } else if (btn.dataset.cmd === 'stop') {
       // Stopping — the address/value/progress that made sense mid-loop
       // don't anymore; only the totals matter now. The firmware's _END
@@ -2201,6 +2214,22 @@ document.querySelectorAll('.quickCmdBtn').forEach(btn => {
       clearLoopFoundLines();
       loopFoundMoreHintEl.style.display = 'none';
       loopFoundInfoEl.style.display = 'flex';
+      // A request sent just before Stop took effect can still get a reply
+      // shortly after — ignore it instead of letting it un-hide Address/
+      // Value again (see the DEVICE_ANS_RE guard above).
+      loopStoppedIgnoreUpdates = true;
+    } else if (btn.dataset.cmd === 'continue') {
+      // Resuming — the "who answered poorly" list from the last Stop is
+      // now stale (a fresh run may produce a completely different set),
+      // and per-address Address/Value updates are relevant again.
+      clearLoopFoundLines();
+      loopFoundMoreHintEl.style.display = 'none';
+      loopFoundInfoEl.style.display = 'none';
+      loopAddrLineEl.textContent = 'Address = —';
+      loopAddrLineEl.style.display = '';
+      loopValueLineEl.textContent = 'Value = —';
+      loopValueLineEl.style.display = '';
+      loopStoppedIgnoreUpdates = false;
     }
     sendText(btn.dataset.cmd);
   });
