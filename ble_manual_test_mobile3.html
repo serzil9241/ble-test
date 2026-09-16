@@ -390,6 +390,13 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
     </div>
   </div>
   <footer>
+    <!-- Relevant only once a loop is actually running — hidden by default
+         (resetLoopView()), shown by "get all devices"/"run all devices"/
+         "Run One Device" (see their own handlers below). Plain quickCmdBtn
+         with data-cmd, so the generic click handler already sends
+         "stop"/"continue" without any dedicated listener needed. -->
+    <button id="cmdStopBtn" class="quickCmdBtn" data-cmd="stop" style="display:none">Stop</button>
+    <button id="cmdContinueBtn" class="quickCmdBtn" data-cmd="continue" style="display:none">Continue</button>
     <button id="backFromLoop">&larr; Back</button>
   </footer>
 </div>
@@ -435,8 +442,6 @@ will NOT work — Web Bluetooth refuses insecure origins other than localhost.)
   <div class="quickCmdsRow">
     <button id="ledOnBtn" class="quickCmdBtn">Led ON</button>
     <button id="ledOffBtn" class="quickCmdBtn">Led OFF</button>
-    <button id="cmdStopBtn" class="quickCmdBtn" data-cmd="stop">Stop</button>
-    <button id="cmdContinueBtn" class="quickCmdBtn" data-cmd="continue">Continue</button>
   </div>
   <div id="loopSendRow">
     <input id="cmd" type="text" placeholder="e.g. get all devices" autocomplete="off" autocapitalize="off">
@@ -739,6 +744,8 @@ function resetLoopView() {
   loopFoundMoreHintEl.style.display = 'none';
   lastSameAddress = null;
   lastLedAddress = null;
+  cmdStopBtn.style.display = 'none';
+  cmdContinueBtn.style.display = 'none';
 }
 
 tileOneDevice.addEventListener('click', () => {
@@ -826,6 +833,8 @@ runOneDeviceBtn.addEventListener('click', async () => {
   loopTransmitLineEl.style.display = 'none';
   loopRecErrorLineEl.textContent = 'receive error = —';
   loopRecErrorLineEl.style.display = 'none';
+  cmdStopBtn.style.display = '';
+  cmdContinueBtn.style.display = '';
 
   sendText('run one device' + lastRunOneDeviceAddr);
 });
@@ -979,14 +988,15 @@ ledOffBtn.addEventListener('click', async () => {
   sendText(`addr${addr}opc3`);
 });
 
-// Stop/Continue already send their command via the generic quickCmdBtn
-// handler below (data-cmd) — this just adds the "and go back to Loop
-// devices" part on top, since after either one there's nothing left to do
-// on the Command screen.
+// Stop/Continue now live in the Loop Devices footer itself (next to Back),
+// hidden until relevant — shown only after "get all devices"/"run all
+// devices"/Run One Device (see those handlers), hidden again by
+// resetLoopView(). They send their command via the generic quickCmdBtn
+// handler below (data-cmd) — no dedicated listener needed, just kept as
+// element refs here so the show/hide logic elsewhere has something to
+// toggle .style.display on.
 const cmdStopBtn = document.getElementById('cmdStopBtn');
 const cmdContinueBtn = document.getElementById('cmdContinueBtn');
-cmdStopBtn.addEventListener('click', () => showView('loop'));
-cmdContinueBtn.addEventListener('click', () => showView('loop'));
 
 backFromLoop.addEventListener('click', () => {
   sendText('stop');
@@ -1154,10 +1164,19 @@ const DEVICE_TYPE_LINE_RE = new RegExp(
 );
 // Duplicate-address entries, up to 16 of them (Prog7000_App.c:2130-2138).
 const SAME_ADDRESS_RE = /Same Address\s*=\s*(\d+)/;
-// Sent every ~7s while "run all devices" is actively looping
-// (Prog7000_App.c:3045) — keeps updating for as long as the loop runs, so
-// it's parsed independently of the get-all-devices scan-result state above.
-const TRANSMIT_RE = /Total transmit\s*=\s*(\d+)\s+receive error\s*=\s*(\d+)/;
+// Sent every ~7s while "run all devices"/"run one device" is actively
+// looping (Prog7000_App.c) — keeps updating for as long as the loop runs,
+// so it's parsed independently of the get-all-devices scan-result state
+// above. Also the exact line sent once more, with "Total " now added
+// before "receive error", when the loop's own _END state wraps up (after
+// Stop, or the loop's own natural end) — "Total " is optional here so this
+// still matches either wording.
+const TRANSMIT_RE = /Total transmit\s*=\s*(\d+)\s+(?:Total\s+)?receive error\s*=\s*(\d+)/;
+// "Receive error = N   (Addr M)" — one line per address that had at least
+// one failed exchange, sent only by the _END states (right before the
+// TRANSMIT_RE summary line above), listing exactly which addresses
+// answered poorly during the run.
+const RECEIVE_ERROR_ADDR_RE = /Receive error\s*=\s*(\d+)\s*\(Addr\s*(\d+)\)/;
 // Last duplicate address a scan turned up — the address prompts default to
 // this (see promptForDeviceAddress()), since it's usually exactly the
 // device you want to go toggle the LED on to find physically.
@@ -1185,11 +1204,19 @@ function updateLoopFoundMoreHint() {
 loopFoundInfoEl.addEventListener('scroll', updateLoopFoundMoreHint);
 
 function tryParseLoopScanInfo(text) {
+  const rem = RECEIVE_ERROR_ADDR_RE.exec(text);
+  if (rem) {
+    // Part of the Stop/_END summary batch — the Stop button's own click
+    // handler already cleared+opened loopFoundInfoEl for this, just append.
+    appendLoopResultLine(`Receive error = ${rem[1]}  (Addr ${rem[2]})`, 'var(--err)');
+    loopFoundInfoEl.style.display = 'flex';
+    return;
+  }
   const trm = TRANSMIT_RE.exec(text);
   if (trm) {
     loopTransmitLineEl.textContent = `Total transmit = ${trm[1]}`;
     loopTransmitLineEl.style.display = '';
-    loopRecErrorLineEl.textContent = `receive error = ${trm[2]}`;
+    loopRecErrorLineEl.textContent = `Total receive error = ${trm[2]}`;
     loopRecErrorLineEl.style.display = '';
     return;
   }
@@ -2153,6 +2180,27 @@ document.querySelectorAll('.quickCmdBtn').forEach(btn => {
       loopRecErrorLineEl.style.display = 'none';
       lastSameAddress = null;
       lastLedAddress = null;
+      // Now relevant — a loop just started, offer Stop/Continue right next
+      // to Back instead of only inside the (now text-command-only) Command
+      // screen.
+      cmdStopBtn.style.display = '';
+      cmdContinueBtn.style.display = '';
+    } else if (btn.dataset.cmd === 'stop') {
+      // Stopping — the address/value/progress that made sense mid-loop
+      // don't anymore; only the totals matter now. The firmware's _END
+      // state is about to send the final "Total transmit ... Total receive
+      // error ..." line (still parsed by TRANSMIT_RE below) plus one
+      // "Receive error = N (Addr M)" line per address that answered
+      // poorly — open/clear the results list now so those can just be
+      // appended as they arrive (RECEIVE_ERROR_ADDR_RE, above).
+      loopAddrLineEl.style.display = 'none';
+      loopValueLineEl.style.display = 'none';
+      loopScanProgressEl.style.display = 'none';
+      loopTransmitLineEl.style.display = '';
+      loopRecErrorLineEl.style.display = '';
+      clearLoopFoundLines();
+      loopFoundMoreHintEl.style.display = 'none';
+      loopFoundInfoEl.style.display = 'flex';
     }
     sendText(btn.dataset.cmd);
   });
